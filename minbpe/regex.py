@@ -10,7 +10,7 @@ Unlike BasicTokenizer:
 """
 
 from collections import Counter
-from heapq import heapify, heappop, heappush
+from heapq import heapify, heappop, heappush, heapreplace
 import regex as re
 from .base import Tokenizer
 
@@ -57,21 +57,22 @@ class RegexTokenizer(Tokenizer):
         vocab = {idx: bytes([idx]) for idx in range(256)} # idx -> bytes
         # count the number of times every consecutive pair appears; the counts
         # are then kept up to date by re-counting only the chunks a merge changes
-        stats = {}
-        stats_get = stats.get
-        # pair -> indices of the chunks that contain it
+        # pair -> indices of the chunks that contain it (once per occurrence;
+        # it may also list chunks that no longer hold the pair)
         where = {}
         where_get = where.get
-        for ci, (chunk_ids, count) in enumerate(zip(ids, counts)):
+        for ci, chunk_ids in enumerate(ids):
             for pair in zip(chunk_ids, chunk_ids[1:]):
-                stats[pair] = stats_get(pair, 0) + count
                 w = where_get(pair)
                 if w is None:
-                    where[pair] = {ci}
+                    where[pair] = [ci]
                 else:
-                    w.add(ci)
-        # lazy max-heap of (-count, pair); an entry is current only while
-        # stats still holds that count for the pair
+                    w.append(ci)
+        counts_at = counts.__getitem__
+        stats = {p: sum(map(counts_at, w)) for p, w in where.items()}
+        stats_get = stats.get
+        # lazy max-heap of (-count, pair); every pair in stats has an entry
+        # at or above its count (entries are pushed only when a count rises)
         heap = [(-c, p) for p, c in stats.items()]
         heapify(heap)
         for i in range(num_merges):
@@ -81,18 +82,26 @@ class RegexTokenizer(Tokenizer):
                 max(stats.values()) # nothing left to merge: raise as before
             while True:
                 negc, p = heap[0]
-                if stats_get(p) == -negc:
+                c = stats_get(p)
+                if c == -negc:
                     break
-                heappop(heap)
+                if c is None:
+                    heappop(heap)
+                else:
+                    heapreplace(heap, (-c, p))
             best = -negc
             # take every current entry tied at the top count off the heap
             tied = []
             tied_seen = set()
             while heap and heap[0][0] == negc:
                 p = heappop(heap)[1]
-                if stats_get(p) == best and p not in tied_seen:
-                    tied.append(p)
-                    tied_seen.add(p)
+                c = stats_get(p)
+                if c == best:
+                    if p not in tied_seen:
+                        tied.append(p)
+                        tied_seen.add(p)
+                elif c is not None:
+                    heappush(heap, (-c, p))
             if len(tied) == 1:
                 cpair = tied[0]
             else:
@@ -139,9 +148,9 @@ class RegexTokenizer(Tokenizer):
                         delta[p] = delta_get(p, 0) + count
                         w = where_get(p)
                         if w is None:
-                            where[p] = {ci}
+                            where[p] = [ci]
                         else:
-                            w.add(ci)
+                            w.append(ci)
                     if part:
                         c = part[0]
                         p = (b, c)
@@ -150,9 +159,9 @@ class RegexTokenizer(Tokenizer):
                         delta[p] = delta_get(p, 0) + count
                         w = where_get(p)
                         if w is None:
-                            where[p] = {ci}
+                            where[p] = [ci]
                         else:
-                            w.add(ci)
+                            w.append(ci)
                     continue
                 # None marks the start of the chunk ("" marks two adjacent
                 # occurrences)
@@ -173,9 +182,9 @@ class RegexTokenizer(Tokenizer):
                         delta[p] = delta_get(p, 0) + count
                         w = where_get(p)
                         if w is None:
-                            where[p] = {ci}
+                            where[p] = [ci]
                         else:
-                            w.add(ci)
+                            w.append(ci)
                     if part:
                         c = part[0]
                         p = (b, c)
@@ -184,9 +193,9 @@ class RegexTokenizer(Tokenizer):
                         delta[p] = delta_get(p, 0) + count
                         w = where_get(p)
                         if w is None:
-                            where[p] = {ci}
+                            where[p] = [ci]
                         else:
-                            w.add(ci)
+                            w.append(ci)
                     prev = part
             # (the order of stats does not matter: ties are settled above
             # by chunk order); pairs whose count is unchanged keep their
@@ -196,7 +205,8 @@ class RegexTokenizer(Tokenizer):
                     c = stats_get(p, 0) + d
                     if c:
                         stats[p] = c
-                        heappush(heap, (-c, p))
+                        if d > 0:
+                            heappush(heap, (-c, p))
                     else:
                         del stats[p]
             # no occurrence of the merged pair is left
