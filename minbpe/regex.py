@@ -101,43 +101,62 @@ class RegexTokenizer(Tokenizer):
             else:
                 tied = [p for p, c in stats.items() if c == best]
                 # only the earliest chunk holding a tied pair needs scanning
-                chunk_ids = ids[min([min(where[p]) for p in tied])]
+                # (where may also list chunks that no longer hold the pair)
+                cands = set().union(*[where[p] for p in tied])
                 tied = set(tied)
-                cpair = next(p for p in zip(chunk_ids, chunk_ids[1:]) if p in tied)
+                cpair = None
+                while cpair is None:
+                    ci = min(cands)
+                    cands.discard(ci)
+                    chunk_ids = ids[ci]
+                    cpair = next((p for p in zip(chunk_ids, chunk_ids[1:]) if p in tied), None)
             # mint a new token: assign it the next available id
             idx = 256 + i
             # replace all occurrences of pair in ids with idx
-            old = cpair[0] + cpair[1]
+            # (str.split cuts non-overlapping occurrences left to right, like
+            # merge(); only the pairs next to an occurrence change)
+            a, b = cpair
+            old = a + b
             new = chr(idx)
-            for ci in where.pop(cpair, ()):
-                chunk_ids = ids[ci]
-                count = counts[ci]
-                newids = chunk_ids.replace(old, new)
-                if len(newids) == len(chunk_ids):
+            for ci in where.pop(cpair):
+                parts = ids[ci].split(old)
+                if len(parts) == 1:
                     continue
-                ids[ci] = newids
+                ids[ci] = new.join(parts)
+                count = counts[ci]
+                removed = []
+                added = []
+                prev = parts[0]
+                for k in range(1, len(parts)):
+                    part = parts[k]
+                    if prev:
+                        c = prev[-1]
+                        removed.append((c, a))
+                        added.append((c, new))
+                    elif k > 1:
+                        removed.append((b, a))
+                        added.append((new, new))
+                    if part:
+                        c = part[0]
+                        removed.append((b, c))
+                        added.append((new, c))
+                    prev = part
                 # (the order of stats does not matter: ties are settled above
                 # by chunk order)
-                old_pairs = list(zip(chunk_ids, chunk_ids[1:]))
-                new_pairs = list(zip(newids, newids[1:]))
-                for p in old_pairs:
+                for p in removed:
                     c = stats[p] - count
                     if c:
                         stats[p] = c
                     else:
                         del stats[p]
-                for p in new_pairs:
+                for p in added:
                     stats[p] = stats_get(p, 0) + count
-                old_set = set(old_pairs)
-                old_set.discard(cpair)
-                new_set = set(new_pairs)
-                for p in old_set - new_set:
-                    where[p].discard(ci)
-                for p in new_set - old_set:
                     if p in where:
                         where[p].add(ci)
                     else:
                         where[p] = {ci}
+            # no occurrence of the merged pair is left
+            del stats[cpair]
             # save the merge
             pair = (ord(cpair[0]), ord(cpair[1]))
             merges[pair] = idx
