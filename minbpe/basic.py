@@ -9,7 +9,6 @@ But:
 - Does not handle any special tokens.
 """
 
-from collections import Counter
 from itertools import compress
 
 from .base import Tokenizer, get_stats, merge, build_merge_map
@@ -21,6 +20,7 @@ class BasicTokenizer(Tokenizer):
         super().__init__()
 
     def train(self, text, vocab_size, verbose=False):
+        from collections import Counter
         assert vocab_size >= 256
         num_merges = vocab_size - 256
 

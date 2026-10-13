@@ -5,7 +5,6 @@ It would be possible to be a lot more strict about the interface and
 e.g. isolating all regex/pattern parts to the RegexTokenizer, but
 some concessions are made for simplicity.
 """
-import unicodedata
 
 # -----------------------------------------------------------------------------
 # a few helper functions useful for both BasicTokenizer and RegexTokenizer
@@ -71,6 +70,7 @@ def replace_control_characters(s: str) -> str:
 class _ControlEscapes(dict):
     # code point -> the character itself if ok, else its \uXXXX escape
     def __missing__(self, o):
+        import unicodedata
         ch = chr(o)
         if unicodedata.category(ch)[0] != "C":
             s = ch # this character is ok
