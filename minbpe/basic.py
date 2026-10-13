@@ -210,6 +210,8 @@ class BasicTokenizer(Tokenizer):
                 vocab_list = cached[1]
             else:
                 vocab_list = [vocab[i] for i in range(len(vocab))]
+                # pad with None so a negative id never wraps onto a real token
+                vocab_list.extend([None] * len(vocab_list))
                 self._decode_vocab_list_cache = (vocab_items, vocab_list)
             if isinstance(ids, tuple):
                 ids_key = ids
@@ -223,7 +225,7 @@ class BasicTokenizer(Tokenizer):
                     text_cache = {}
                     self._decode_text_cache = (vocab_items, text_cache)
             try:
-                text_bytes = b"".join([vocab_list[idx] if idx >= 0 else vocab[idx] for idx in ids])
+                text_bytes = b"".join([vocab_list[idx] for idx in ids])
             except (IndexError, KeyError, TypeError):
                 text_bytes = b"".join([vocab[idx] for idx in ids])
         else:

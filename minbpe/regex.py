@@ -338,6 +338,8 @@ class RegexTokenizer(Tokenizer):
                 for idx, token in special_tokens.items():
                     if idx >= 0:
                         lookup[idx] = token
+                # pad with None so a negative id never wraps onto a real token
+                lookup.extend([None] * len(lookup))
                 self._decode_lookup_cache = (vocab_items, special_items, lookup)
             if isinstance(ids, tuple):
                 ids_key = ids
@@ -351,8 +353,10 @@ class RegexTokenizer(Tokenizer):
                     text_cache = {}
                     self._decode_text_cache = (vocab_items, special_items, text_cache)
             try:
-                part_bytes = [lookup[idx] if idx >= 0 else special_tokens[idx] for idx in ids]
-                text_bytes = b"".join(part_bytes)
+                try:
+                    text_bytes = b"".join([lookup[idx] for idx in ids])
+                except (IndexError, TypeError):
+                    text_bytes = b"".join([lookup[idx] if idx >= 0 else special_tokens[idx] for idx in ids])
             except (IndexError, KeyError, TypeError):
                 part_bytes = []
                 append = part_bytes.append
