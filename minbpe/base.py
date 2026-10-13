@@ -19,6 +19,7 @@ _MERGE_LINE_CACHE = {}
 _MERGE_LINE_CACHE_MAX = 8192
 _VOCAB_LINE_CACHE = {}
 _VOCAB_LINE_CACHE_MAX = 8192
+_VOCAB_BYTES_PREFIX_CACHE = None
 
 def get_stats(ids, counts=None):
     """
@@ -189,11 +190,25 @@ class Tokenizer:
         if cached_vocab_file is not None and cached_vocab_file[0] == vocab_items and cached_vocab_file[1] == merge_items:
             vocab_bytes = cached_vocab_file[2]
         else:
-            inverted_merges = {idx: pair for pair, idx in merge_items}
+            global _VOCAB_BYTES_PREFIX_CACHE
+            prefix_len = 0
+            prefix_merge_len = 0
+            prefix_bytes = b""
+            cached_prefix = _VOCAB_BYTES_PREFIX_CACHE
+            if cached_prefix is not None:
+                cached_vocab_items, cached_merge_items, cached_bytes = cached_prefix
+                if (len(cached_vocab_items) < len(vocab_items)
+                        and len(cached_merge_items) <= len(merge_items)
+                        and vocab_items[:len(cached_vocab_items)] == cached_vocab_items
+                        and merge_items[:len(cached_merge_items)] == cached_merge_items):
+                    prefix_len = len(cached_vocab_items)
+                    prefix_merge_len = len(cached_merge_items)
+                    prefix_bytes = cached_bytes
+            inverted_merges = {idx: pair for pair, idx in merge_items[prefix_merge_len:]}
             lines = []
             append = lines.append
             vocab = self.vocab
-            for idx, token in vocab_items:
+            for idx, token in vocab_items[prefix_len:]:
                 # note: many tokens may be partial utf-8 sequences
                 # and cannot be decoded into valid strings. Here we're using
                 # errors='replace' to replace them with the replacement char �.
@@ -208,8 +223,9 @@ class Tokenizer:
                     # otherwise this is leaf token, just print it
                     # (this should just be the first 256 tokens, the bytes)
                     append(render_vocab_line(idx, token))
-            vocab_bytes = "".join(lines).encode("utf-8")
+            vocab_bytes = prefix_bytes + "".join(lines).encode("utf-8")
             self._vocab_file_cache = (vocab_items, merge_items, vocab_bytes)
+            _VOCAB_BYTES_PREFIX_CACHE = (vocab_items, merge_items, vocab_bytes)
         with open(vocab_file, "wb") as f:
             f.write(vocab_bytes)
 
