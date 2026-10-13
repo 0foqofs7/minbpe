@@ -17,8 +17,15 @@ def get_stats(ids, counts=None):
     Optionally allows to update an existing dictionary of counts
     """
     counts = {} if counts is None else counts
-    for pair in zip(ids, ids[1:]): # iterate consecutive elements
+    it = iter(ids)
+    try:
+        prev = next(it)
+    except StopIteration:
+        return counts
+    for curr in it: # iterate consecutive elements
+        pair = (prev, curr)
         counts[pair] = counts.get(pair, 0) + 1
+        prev = curr
     return counts
 
 
