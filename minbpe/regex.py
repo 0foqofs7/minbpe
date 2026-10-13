@@ -66,19 +66,22 @@ class RegexTokenizer(Tokenizer):
             for chunk_ids in ids:
                 j = 0
                 n = len(chunk_ids)
-                while j < n - 1:
+                last = n - 1
+                while j < last:
                     if chunk_ids[j] == p0 and chunk_ids[j+1] == p1:
                         new_chunk_ids = chunk_ids[:j]
                         append = new_chunk_ids.append
                         append(idx)
                         j += 2
-                        while j < n:
-                            if chunk_ids[j] == p0 and j < n - 1 and chunk_ids[j+1] == p1:
+                        while j < last:
+                            if chunk_ids[j] == p0 and chunk_ids[j+1] == p1:
                                 append(idx)
                                 j += 2
                             else:
                                 append(chunk_ids[j])
                                 j += 1
+                        if j == last:
+                            append(chunk_ids[j])
                         if len(new_chunk_ids) > 1:
                             new_ids.append(new_chunk_ids)
                         break
