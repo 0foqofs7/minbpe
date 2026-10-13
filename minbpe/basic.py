@@ -10,6 +10,7 @@ But:
 """
 
 from heapq import heapify, heappop, heappush
+from operator import itemgetter
 
 from .base import Tokenizer, get_stats, merge, build_merge_map, ordered_merge_steps
 
@@ -41,6 +42,8 @@ class BasicTokenizer(Tokenizer):
         heap = [(-n, p) for p, n in stats.items()]
         heapify(heap)
         get = stats.get
+        last_char = itemgetter(-1)
+        first_char = itemgetter(0)
         for i in range(num_merges):
             # find the pair with the highest count; ties go to the pair that
             # occurs first in ids
@@ -73,25 +76,16 @@ class BasicTokenizer(Tokenizer):
             old = {cpair: m}
             new = {}
             old_get = old.get
-            new_get = new.get
-            for p in parts[:-1]:
-                if p:
-                    l = p[-1]
-                    q = l + a
-                    old[q] = old_get(q, 0) + 1
-                    q = l + c
-                    new[q] = new_get(q, 0) + 1
-            last_part = len(parts) - 1
-            z = 0
-            for j, p in enumerate(parts[1:], 1):
-                if p:
-                    r = p[0]
-                    q = b + r
-                    old[q] = old_get(q, 0) + 1
-                    q = c + r
-                    new[q] = new_get(q, 0) + 1
-                elif j != last_part:
-                    z += 1
+            # c never occurs in ids, so the pairs l+c, c+r and c+c are distinct
+            for l, n in Counter(map(last_char, filter(None, parts[:-1]))).items():
+                q = l + a
+                old[q] = old_get(q, 0) + n
+                new[l + c] = n
+            for r, n in Counter(map(first_char, filter(None, parts[1:]))).items():
+                q = b + r
+                old[q] = old_get(q, 0) + n
+                new[c + r] = n
+            z = parts[1:-1].count("")
             if z:
                 q = b + a
                 old[q] = old_get(q, 0) + z
