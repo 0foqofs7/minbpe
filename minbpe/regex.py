@@ -96,6 +96,8 @@ class RegexTokenizer(Tokenizer):
         # stats[pair] still equals its count, stale entries are skipped
         heap = [(-c, p) for p, c in stats.items()]
         heapq.heapify(heap)
+        # pair -> count of its latest heap entry
+        pushed = dict(stats)
         heappush = heapq.heappush
         heappop = heapq.heappop
         for i in range(num_merges):
@@ -136,20 +138,23 @@ class RegexTokenizer(Tokenizer):
                 w = weights[j]
                 new_ids = chunk_ids.replace(old, new)
                 ids[j] = new_ids
-                for p in zip(chunk_ids, chunk_ids[1:]):
+                old_list = list(zip(chunk_ids, chunk_ids[1:]))
+                new_list = list(zip(new_ids, new_ids[1:]))
+                for p in old_list:
                     stats[p] -= w
-                for p in zip(new_ids, new_ids[1:]):
+                for p in new_list:
                     if p in stats:
                         stats[p] += w
                     else:
                         stats[p] = w
-                old_pairs = set(zip(chunk_ids, chunk_ids[1:]))
-                new_pairs = set(zip(new_ids, new_ids[1:]))
+                old_pairs = set(old_list)
+                new_pairs = set(new_list)
                 for p in old_pairs - new_pairs:
                     where[p].discard(j)
                     if not stats[p]:
                         del stats[p]
                         del where[p]
+                        pushed.pop(p, None)
                 for p in new_pairs - old_pairs:
                     if p in where:
                         where[p].add(j)
@@ -157,9 +162,11 @@ class RegexTokenizer(Tokenizer):
                         where[p] = {j}
                 touched |= old_pairs
                 touched |= new_pairs
+            # push only pairs whose count differs from their latest entry
             for p in touched:
                 c = stats.get(p)
-                if c:
+                if c and c != pushed.get(p):
+                    pushed[p] = c
                     heappush(heap, (-c, p))
             # save the merge
             merges[pair] = idx
