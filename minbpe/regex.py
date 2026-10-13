@@ -41,9 +41,18 @@ class RegexTokenizer(Tokenizer):
         # split the text up into text chunks
         text_chunks = re.findall(self.compiled_pattern, text)
 
-        # input text preprocessing
-        ids = [list(ch.encode("utf-8")) for ch in text_chunks]
-        ids = [chunk_ids for chunk_ids in ids if len(chunk_ids) > 1]
+        # input text preprocessing: identical chunks are processed once,
+        # weighted by their number of occurrences (first-seen order is kept)
+        chunk_counts = {}
+        for ch in text_chunks:
+            chunk_counts[ch] = chunk_counts.get(ch, 0) + 1
+        ids = []
+        weights = []
+        for ch, count in chunk_counts.items():
+            chunk_ids = list(ch.encode("utf-8"))
+            if len(chunk_ids) > 1:
+                ids.append(chunk_ids)
+                weights.append(count)
 
         # iteratively merge the most common pairs to create new tokens
         merges = {} # (int, int) -> int
@@ -51,19 +60,19 @@ class RegexTokenizer(Tokenizer):
         for i in range(num_merges):
             # count the number of times every consecutive pair appears
             stats = {}
-            for chunk_ids in ids:
+            for chunk_ids, w in zip(ids, weights):
                 # count pairs in this chunk, adding up counts across chunks
-                for j in range(len(chunk_ids) - 1):
-                    pair = (chunk_ids[j], chunk_ids[j+1])
-                    stats[pair] = stats.get(pair, 0) + 1
+                for pair in zip(chunk_ids, chunk_ids[1:]):
+                    stats[pair] = stats.get(pair, 0) + w
             # find the pair with the highest count
             pair = max(stats, key=stats.get)
             # mint a new token: assign it the next available id
             idx = 256 + i
             # replace all occurrences of pair in ids with idx
             new_ids = []
+            new_weights = []
             p0, p1 = pair
-            for chunk_ids in ids:
+            for chunk_ids, w in zip(ids, weights):
                 j = 0
                 n = len(chunk_ids)
                 last = n - 1
@@ -84,11 +93,14 @@ class RegexTokenizer(Tokenizer):
                             append(chunk_ids[j])
                         if len(new_chunk_ids) > 1:
                             new_ids.append(new_chunk_ids)
+                            new_weights.append(w)
                         break
                     j += 1
                 else:
                     new_ids.append(chunk_ids)
+                    new_weights.append(w)
             ids = new_ids
+            weights = new_weights
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
