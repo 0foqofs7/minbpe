@@ -60,8 +60,17 @@ class RegexTokenizer(Tokenizer):
         num_merges = vocab_size - 256
 
         # split the text up into text chunks and encode them
-        ids = [chunk_ids for chunk in self.compiled_pattern.findall(text)
-            if len(chunk_ids := list(chunk.encode("utf-8"))) >= 2]
+        # identical chunks are kept once (in first-seen order) with a count
+        chunk_counts = {}
+        for chunk in self.compiled_pattern.findall(text):
+            chunk_counts[chunk] = chunk_counts.get(chunk, 0) + 1
+        ids = []
+        counts = []
+        for chunk, count in chunk_counts.items():
+            chunk_ids = list(chunk.encode("utf-8"))
+            if len(chunk_ids) >= 2:
+                ids.append(chunk_ids)
+                counts.append(count)
 
         # iteratively merge the most common pairs to create new tokens
         merges = {} # (int, int) -> int
@@ -70,12 +79,12 @@ class RegexTokenizer(Tokenizer):
             # count the number of times every consecutive pair appears
             stats = {}
             stats_get = stats.get
-            for chunk_ids in ids:
+            for chunk_ids, count in zip(ids, counts):
                 it = iter(chunk_ids)
                 prev = next(it)
                 for curr in it:
                     pair = (prev, curr)
-                    stats[pair] = stats_get(pair, 0) + 1
+                    stats[pair] = stats_get(pair, 0) + count
                     prev = curr
             # find the pair with the highest count
             pair = max(stats, key=stats.get)
