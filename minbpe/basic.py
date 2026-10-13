@@ -64,8 +64,14 @@ class BasicTokenizer(Tokenizer):
                 old.extend(map(str.__add__, seg, seg[1:]))
                 seg = ids[lo:s] + c * ((e - s) // 2) + ids[e:e + 1]
                 new.extend(map(str.__add__, seg, seg[1:]))
-            stats.subtract(Counter(old))
+            # drop pairs whose count reaches zero so the max scan stays small
             stats.update(new)
+            for p, n in Counter(old).items():
+                n = stats[p] - n
+                if n:
+                    stats[p] = n
+                else:
+                    del stats[p]
             # replace all occurrences of pair in ids with idx
             ids = ids.replace(cpair, c)
             # save the merge
