@@ -9,6 +9,7 @@ Unlike BasicTokenizer:
 - RegexTokenizer handles optional special tokens.
 """
 
+from collections import Counter
 from heapq import heapify, heappop, heappush
 import regex as re
 from .base import Tokenizer, get_stats, merge, build_merge_lookup
@@ -62,9 +63,7 @@ class RegexTokenizer(Tokenizer):
 
         # split the text up into text chunks and encode them
         # identical chunks are kept once (in first-seen order) with a count
-        chunk_counts = {}
-        for chunk in self.compiled_pattern.findall(text):
-            chunk_counts[chunk] = chunk_counts.get(chunk, 0) + 1
+        chunk_counts = Counter(self.compiled_pattern.findall(text))
         ids = []
         counts = []
         for chunk, count in chunk_counts.items():
@@ -135,52 +134,53 @@ class RegexTokenizer(Tokenizer):
             a, b = cpair
             old = a + b
             new = chr(idx)
-            changed = set()
+            # net change of every pair count, summed over all chunks
+            delta = {}
+            delta_get = delta.get
             for ci in where.pop(cpair):
                 parts = ids[ci].split(old)
                 if len(parts) == 1:
                     continue
                 ids[ci] = new.join(parts)
                 count = counts[ci]
-                removed = []
                 added = []
                 prev = parts[0]
                 for k in range(1, len(parts)):
                     part = parts[k]
                     if prev:
                         c = prev[-1]
-                        removed.append((c, a))
+                        p = (c, a)
+                        delta[p] = delta_get(p, 0) - count
                         added.append((c, new))
                     elif k > 1:
-                        removed.append((b, a))
+                        p = (b, a)
+                        delta[p] = delta_get(p, 0) - count
                         added.append((new, new))
                     if part:
                         c = part[0]
-                        removed.append((b, c))
+                        p = (b, c)
+                        delta[p] = delta_get(p, 0) - count
                         added.append((new, c))
                     prev = part
-                changed.update(removed)
-                changed.update(added)
-                # (the order of stats does not matter: ties are settled above
-                # by chunk order)
-                for p in removed:
-                    c = stats[p] - count
-                    if c:
-                        stats[p] = c
-                    else:
-                        del stats[p]
                 for p in added:
-                    stats[p] = stats_get(p, 0) + count
+                    delta[p] = delta_get(p, 0) + count
                     if p in where:
                         where[p].add(ci)
                     else:
                         where[p] = {ci}
+            # (the order of stats does not matter: ties are settled above
+            # by chunk order); pairs whose count is unchanged keep their
+            # current heap entry
+            for p, d in delta.items():
+                if d and p != cpair:
+                    c = stats_get(p, 0) + d
+                    if c:
+                        stats[p] = c
+                        heappush(heap, (-c, p))
+                    else:
+                        del stats[p]
             # no occurrence of the merged pair is left
             del stats[cpair]
-            for p in changed:
-                c = stats_get(p)
-                if c:
-                    heappush(heap, (-c, p))
             # save the merge
             pair = (ord(cpair[0]), ord(cpair[1]))
             merges[pair] = idx
