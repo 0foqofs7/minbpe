@@ -9,7 +9,12 @@ But:
 - Does not handle any special tokens.
 """
 
-from heapq import heapify, heappop, heappush
+try:
+    # the C heap functions behind heapq; importing them directly avoids
+    # loading the pure-Python heapq module
+    from _heapq import heapify, heappop, heappush, heapreplace
+except ImportError:
+    from heapq import heapify, heappop, heappush, heapreplace
 from operator import itemgetter
 
 from .base import Tokenizer, get_stats, merge, build_merge_map, ordered_merge_steps
@@ -69,10 +74,27 @@ class BasicTokenizer(Tokenizer):
             # find the pair with the highest count; ties go to the pair that
             # occurs first in ids
             if pending:
-                # a pending pair whose count changed was already pushed again
-                pending = [p for p in pending if get(p) == ptop]
-            while heap and get(heap[0][1]) != -heap[0][0]:
-                heappop(heap)
+                # a pending pair whose count dropped goes back on the heap
+                keep = []
+                for p in pending:
+                    n = get(p)
+                    if n == ptop:
+                        keep.append(p)
+                    elif n:
+                        heappush(heap, (-n, p))
+                pending = keep
+            # counts of existing pairs only drop, so a stale entry is never
+            # below the pair's count; re-push it with the current count once
+            # it reaches the top
+            while heap:
+                negn, p = heap[0]
+                n = get(p)
+                if n == -negn:
+                    break
+                if n:
+                    heapreplace(heap, (-n, p))
+                else:
+                    heappop(heap)
             if (heap and -heap[0][0] > ptop) or not pending:
                 if not heap:
                     raise IndexError("list index out of range")
@@ -86,9 +108,15 @@ class BasicTokenizer(Tokenizer):
                 negtop = -top
                 cands = set(pending)
             while heap and heap[0][0] == negtop:
-                p = heappop(heap)[1]
-                if get(p) == top:
+                p = heap[0][1]
+                n = get(p)
+                if n == top:
                     cands.add(p)
+                    heappop(heap)
+                elif n:
+                    heapreplace(heap, (-n, p))
+                else:
+                    heappop(heap)
             cpair = min(cands, key=ids.find) if len(cands) > 1 else next(iter(cands))
             cands.discard(cpair)
             pending = cands
@@ -126,12 +154,12 @@ class BasicTokenizer(Tokenizer):
             dict.update(stats, new)
             for p, n in new.items():
                 heappush(heap, (-n, p))
-            # drop pairs whose count reaches zero so the max scan stays small
+            # drop pairs whose count reaches zero so the max scan stays small;
+            # their heap entries are refreshed lazily when they reach the top
             for p, n in old.items():
                 n = stats[p] - n
                 if n:
                     stats[p] = n
-                    heappush(heap, (-n, p))
                 else:
                     del stats[p]
             # replace all occurrences of pair in ids with idx
