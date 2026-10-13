@@ -62,10 +62,10 @@ class BasicTokenizer(Tokenizer):
         merges = self.merges
         while len(ids) >= 2:
             # find the pair with the lowest merge index
-            stats = get_stats(ids)
             pair = None
             idx = None
-            for p in stats:
+            for i in range(len(ids) - 1):
+                p = (ids[i], ids[i+1])
                 merge_idx = merges.get(p)
                 if merge_idx is not None and (idx is None or merge_idx < idx):
                     pair = p
