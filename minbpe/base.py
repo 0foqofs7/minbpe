@@ -222,11 +222,18 @@ class Tokenizer:
             f.write(model_bytes)
         # write the vocab: for the human to look at
         vocab_file = file_prefix + ".vocab"
-        vocab_items = tuple(self.vocab.items())
-        merge_items = tuple(self.merges.items())
+        # keys and values are compared as separate tuples, which is the same
+        # as comparing the items but needs no per-item tuple allocation
+        vocab_keys = tuple(self.vocab)
+        vocab_values = tuple(self.vocab.values())
+        merge_values = tuple(self.merges.values())
         cached_vocab_file = getattr(self, "_vocab_file_cache", None)
-        if cached_vocab_file is not None and cached_vocab_file[0] == vocab_items and cached_vocab_file[1] == merge_items:
-            vocab_bytes = cached_vocab_file[2]
+        if (cached_vocab_file is not None
+                and cached_vocab_file[0] == vocab_keys
+                and cached_vocab_file[1] == vocab_values
+                and cached_vocab_file[2] == merge_keys
+                and cached_vocab_file[3] == merge_values):
+            vocab_bytes = cached_vocab_file[4]
         else:
             global _VOCAB_BYTES_PREFIX_CACHE
             prefix_len = 0
@@ -234,19 +241,23 @@ class Tokenizer:
             prefix_bytes = b""
             cached_prefix = _VOCAB_BYTES_PREFIX_CACHE
             if cached_prefix is not None:
-                cached_vocab_items, cached_merge_items, cached_bytes = cached_prefix
-                if (len(cached_vocab_items) < len(vocab_items)
-                        and len(cached_merge_items) <= len(merge_items)
-                        and vocab_items[:len(cached_vocab_items)] == cached_vocab_items
-                        and merge_items[:len(cached_merge_items)] == cached_merge_items):
-                    prefix_len = len(cached_vocab_items)
-                    prefix_merge_len = len(cached_merge_items)
+                c_vocab_keys, c_vocab_values, c_merge_keys, c_merge_values, cached_bytes = cached_prefix
+                n = len(c_vocab_keys)
+                m = len(c_merge_keys)
+                if (n < len(vocab_keys)
+                        and m <= len(merge_keys)
+                        and vocab_keys[:n] == c_vocab_keys
+                        and vocab_values[:n] == c_vocab_values
+                        and merge_keys[:m] == c_merge_keys
+                        and merge_values[:m] == c_merge_values):
+                    prefix_len = n
+                    prefix_merge_len = m
                     prefix_bytes = cached_bytes
-            inverted_merges = {idx: pair for pair, idx in merge_items[prefix_merge_len:]}
+            inverted_merges = dict(zip(merge_values[prefix_merge_len:], merge_keys[prefix_merge_len:]))
             lines = []
             append = lines.append
             vocab = self.vocab
-            for idx, token in vocab_items[prefix_len:]:
+            for idx, token in zip(vocab_keys[prefix_len:], vocab_values[prefix_len:]):
                 # note: many tokens may be partial utf-8 sequences
                 # and cannot be decoded into valid strings. Here we're using
                 # errors='replace' to replace them with the replacement char �.
@@ -262,8 +273,8 @@ class Tokenizer:
                     # (this should just be the first 256 tokens, the bytes)
                     append(render_vocab_line(idx, token))
             vocab_bytes = prefix_bytes + "".join(lines).encode("utf-8")
-            self._vocab_file_cache = (vocab_items, merge_items, vocab_bytes)
-            _VOCAB_BYTES_PREFIX_CACHE = (vocab_items, merge_items, vocab_bytes)
+            self._vocab_file_cache = (vocab_keys, vocab_values, merge_keys, merge_values, vocab_bytes)
+            _VOCAB_BYTES_PREFIX_CACHE = self._vocab_file_cache
         with open(vocab_file, "wb") as f:
             f.write(vocab_bytes)
 
