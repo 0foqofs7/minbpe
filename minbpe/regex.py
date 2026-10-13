@@ -190,13 +190,24 @@ class RegexTokenizer(Tokenizer):
                 nexts = merge_lookup.get(prev)
                 if nexts is not None:
                     idx = nexts.get(curr)
-                    if idx is not None and (best_idx is None or idx < best_idx):
-                        best_p0 = prev
-                        best_p1 = curr
-                        best_idx = idx
+                    if idx is not None:
+                        if best_idx is None or idx < best_idx:
+                            best_p0 = prev
+                            best_p1 = curr
+                            best_idx = idx
+                            repeated = False
+                        elif prev == best_p0 and curr == best_p1:
+                            repeated = True
                 prev = curr
             if best_idx is None:
                 break # nothing else can be merged anymore
+            if not repeated:
+                # the pair occurs exactly once: merge it in place
+                i = ids.index(best_p0)
+                while ids[i+1] != best_p1:
+                    i = ids.index(best_p0, i + 1)
+                ids[i:i+2] = [best_idx]
+                continue
             newids = []
             append = newids.append
             i = 0
