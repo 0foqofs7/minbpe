@@ -4,7 +4,6 @@ Note that this is a pretrained tokenizer. By default and inside init(), it
 loads the pretrained tokenizer from the `cl100k_base` tokenizer of tiktoken.
 """
 
-import tiktoken
 from .regex import RegexTokenizer
 
 
@@ -60,6 +59,8 @@ class GPT4Tokenizer(RegexTokenizer):
     def __init__(self):
         super().__init__(pattern=GPT4_SPLIT_PATTERN)
         # get the official tokenizer and its merges
+        # (tiktoken is imported here so that importing minbpe does not need it)
+        import tiktoken
         enc = tiktoken.get_encoding("cl100k_base")
         mergeable_ranks = enc._mergeable_ranks
         # the merges are those of gpt4, but we have to recover them
