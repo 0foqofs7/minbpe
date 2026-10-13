@@ -85,7 +85,7 @@ class RegexTokenizer(Tokenizer):
         stats = {}
         where = {}
         for j, (chunk_ids, w) in enumerate(zip(ids, weights)):
-            for cpair in zip(chunk_ids, chunk_ids[1:]):
+            for cpair in map(str.__add__, chunk_ids, chunk_ids[1:]):
                 stats[cpair] = stats.get(cpair, 0) + w
                 if cpair in where:
                     where[cpair].add(j)
@@ -124,22 +124,22 @@ class RegexTokenizer(Tokenizer):
                 first = min(min(where[p]) for p in tied)
                 tied = set(tied)
                 chunk_ids = ids[first]
-                cpair = next(p for p in zip(chunk_ids, chunk_ids[1:]) if p in tied)
+                cpair = next(p for p in map(str.__add__, chunk_ids, chunk_ids[1:]) if p in tied)
             pair = (ord(cpair[0]), ord(cpair[1]))
             # mint a new token: assign it the next available id
             idx = 256 + i
             # replace all occurrences of pair in the affected chunks with idx
             # (str.replace is left to right and non-overlapping),
             # updating the pair counts of those chunks only
-            old = cpair[0] + cpair[1]
+            old = cpair
             new = chr(idx)
             for j in sorted(where[cpair]):
                 chunk_ids = ids[j]
                 w = weights[j]
                 new_ids = chunk_ids.replace(old, new)
                 ids[j] = new_ids
-                old_list = list(zip(chunk_ids, chunk_ids[1:]))
-                new_list = list(zip(new_ids, new_ids[1:]))
+                old_list = list(map(str.__add__, chunk_ids, chunk_ids[1:]))
+                new_list = list(map(str.__add__, new_ids, new_ids[1:]))
                 for p in old_list:
                     stats[p] -= w
                 for p in new_list:
