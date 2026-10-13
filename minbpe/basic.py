@@ -14,6 +14,24 @@ from operator import itemgetter
 
 from .base import Tokenizer, get_stats, merge, build_merge_map, ordered_merge_steps
 
+try:
+    # the C counting loop behind collections.Counter; importing it directly
+    # avoids loading the whole collections package for train()
+    from _collections import _count_elements
+except ImportError:
+    def _count_elements(mapping, iterable):
+        get = mapping.get
+        for elem in iterable:
+            mapping[elem] = get(elem, 0) + 1
+
+
+def _count(iterable):
+    # plain-dict equivalent of collections.Counter(iterable): same counts,
+    # same insertion order
+    counts = {}
+    _count_elements(counts, iterable)
+    return counts
+
 
 class BasicTokenizer(Tokenizer):
 
@@ -21,7 +39,6 @@ class BasicTokenizer(Tokenizer):
         super().__init__()
 
     def train(self, text, vocab_size, verbose=False):
-        from collections import Counter
         assert vocab_size >= 256
         num_merges = vocab_size - 256
 
@@ -36,7 +53,7 @@ class BasicTokenizer(Tokenizer):
         vocab = {idx: bytes([idx]) for idx in range(256)} # int -> bytes
         # count up the number of times every consecutive pair appears, keyed by
         # the two-character string; kept up to date incrementally after each merge
-        stats = Counter(map(str.__add__, ids, ids[1:]))
+        stats = _count(map(str.__add__, ids, ids[1:]))
         # lazy max-heap of (-count, pair); entries whose count no longer
         # matches stats are stale and dropped when they reach the top
         heap = [(-n, p) for p, n in stats.items()]
@@ -91,11 +108,11 @@ class BasicTokenizer(Tokenizer):
             new = {}
             old_get = old.get
             # c never occurs in ids, so the pairs l+c, c+r and c+c are distinct
-            for l, n in Counter(map(last_char, filter(None, parts[:-1]))).items():
+            for l, n in _count(map(last_char, filter(None, parts[:-1]))).items():
                 q = l + a
                 old[q] = old_get(q, 0) + n
                 new[l + c] = n
-            for r, n in Counter(map(first_char, filter(None, parts[1:]))).items():
+            for r, n in _count(map(first_char, filter(None, parts[1:]))).items():
                 q = b + r
                 old[q] = old_get(q, 0) + n
                 new[c + r] = n
