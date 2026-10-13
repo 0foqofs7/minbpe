@@ -12,29 +12,7 @@ Unlike BasicTokenizer:
 from collections import Counter
 from heapq import heapify, heappop, heappush
 import regex as re
-from .base import Tokenizer, get_stats, merge, build_merge_lookup
-
-
-def _merge_if_present(ids, pair, idx):
-    newids = None
-    i = 0
-    n = len(ids)
-    last = n - 1
-    p0, p1 = pair
-    while i < last:
-        if ids[i] == p0 and ids[i+1] == p1:
-            if newids is None:
-                newids = ids[:i]
-                append = newids.append
-            append(idx)
-            i += 2
-        else:
-            if newids is not None:
-                append(ids[i])
-            i += 1
-    if i == last and newids is not None:
-        append(ids[i])
-    return ids if newids is None else newids
+from .base import Tokenizer
 
 
 # the main GPT text split patterns, see
@@ -282,7 +260,7 @@ class RegexTokenizer(Tokenizer):
     def encode_ordinary(self, text):
         """Encoding that ignores any special tokens."""
         # split text into chunks of text by categories defined in regex pattern
-        text_chunks = re.findall(self.compiled_pattern, text)
+        text_chunks = self.compiled_pattern.findall(text)
         # all chunks of text are encoded separately, then results are joined
         ids = []
         merge_lookup = self._get_merge_table()
@@ -326,6 +304,25 @@ class RegexTokenizer(Tokenizer):
             # shortcut: if no special tokens, just use the ordinary encoding
             return self.encode_ordinary(text)
         # otherwise, we have to be careful with potential special tokens in text
+        if all(type(k) is str and k for k in special):
+            # split at the leftmost occurrence of any special token (the first
+            # listed one on a tie), which is what the alternation below matches
+            ids = []
+            start = 0
+            while True:
+                pos = -1
+                for k in special:
+                    j = text.find(k, start)
+                    if j != -1 and (pos == -1 or j < pos):
+                        pos = j
+                        tok = k
+                if pos == -1:
+                    break
+                ids.extend(self.encode_ordinary(text[start:pos]))
+                ids.append(special[tok])
+                start = pos + len(tok)
+            ids.extend(self.encode_ordinary(text[start:]))
+            return ids
         # we handle special tokens by splitting the text
         # based on the occurrence of any exact match with any of the special tokens
         # we can use re.split for this. note that surrounding the pattern with ()

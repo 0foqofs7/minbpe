@@ -116,7 +116,7 @@ class BasicTokenizer(Tokenizer):
         # so applying each merge once in index order gives the same result.
         # tokens are held one per character so each merge is a str.replace,
         # which also replaces left to right without overlaps.
-        ordered = sorted(self.merges.items(), key=lambda kv: kv[1])
+        ordered = sorted(self.merges.items(), key=itemgetter(1))
         if all(type(p0) is int and type(p1) is int and type(idx) is int
                and 0 <= p0 < idx and 0 <= p1 < idx and idx < 0x110000
                for (p0, p1), idx in ordered) and \
