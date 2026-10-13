@@ -80,6 +80,14 @@ class BasicTokenizer(Tokenizer):
         # together with the count they had then (ptop)
         pending = ()
         ptop = 0
+        # new tokens are held as byte values absent from the text while any
+        # are left, so ids stays a one-byte-per-character str; char_ids maps
+        # each such character back to its token id
+        used = set(text_bytes)
+        free = [chr(j) for j in range(256) if j not in used]
+        nfree = len(free)
+        char_ids = {}
+        char_id = char_ids.get
         for i in range(num_merges):
             # find the pair with the highest count; ties go to the pair that
             # occurs first in ids
@@ -131,17 +139,18 @@ class BasicTokenizer(Tokenizer):
             cands.discard(cpair)
             pending = cands
             ptop = top
-            pair = (ord(cpair[0]), ord(cpair[1]))
+            a, b = cpair
+            pair = (char_id(a) or ord(a), char_id(b) or ord(b))
             # mint a new token: assign it the next available id
             idx = 256 + i
-            c = chr(idx)
+            c = free[i] if i < nfree else chr(idx)
+            char_ids[c] = idx
             # split ids at the (non-overlapping, left-to-right) occurrences of
             # the pair; the characters around each occurrence are the ends of
             # the neighbouring parts, and an empty inner part means two
             # occurrences are adjacent
             parts = ids.split(cpair)
             m = len(parts) - 1
-            a, b = cpair
             old = {cpair: m}
             new = {}
             old_get = old.get
