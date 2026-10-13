@@ -10,6 +10,7 @@ But:
 """
 
 from collections import Counter
+from itertools import islice
 
 from .base import Tokenizer, get_stats, merge, build_merge_lookup
 
@@ -33,23 +34,63 @@ class BasicTokenizer(Tokenizer):
         # iteratively merge the most common pairs to create new tokens
         merges = {} # (int, int) -> int
         vocab = {idx: bytes([idx]) for idx in range(256)} # int -> bytes
+        # count up the number of times every consecutive pair appears; the
+        # counts are then updated around the occurrences each merge replaces
+        stats = dict(Counter(zip(ids, ids[1:])))
+        stats_get = stats.get
         for i in range(num_merges):
-            # count up the number of times every consecutive pair appears
-            # (in first-occurrence order, as get_stats does)
-            stats = Counter(zip(ids, ids[1:]))
-            # find the pair with the highest count
-            cpair = max(stats, key=stats.get)
+            # find the pair with the highest count; ties go to the pair that
+            # occurs first in ids, as with a freshly counted stats dict
+            vals = list(stats.values())
+            best = max(vals)
+            if vals.count(best) == 1:
+                cpair = next(islice(stats, vals.index(best), None))
+            else:
+                tied = [p for p, c in stats.items() if c == best]
+                cpair = min(tied, key=lambda p: ids.find(p[0] + p[1]))
             pair = (ord(cpair[0]), ord(cpair[1]))
             # mint a new token: assign it the next available id
             idx = 256 + i
             # replace all occurrences of pair in ids with idx
-            ids = ids.replace(cpair[0] + cpair[1], chr(idx))
+            # (str.split, like str.replace, cuts non-overlapping occurrences
+            # left to right; only the pairs next to an occurrence change)
+            a, b = cpair
+            new = chr(idx)
+            parts = ids.split(a + b)
+            removed = []
+            added = []
+            prev = parts[0]
+            for k in range(1, len(parts)):
+                part = parts[k]
+                if prev:
+                    c = prev[-1]
+                    removed.append((c, a))
+                    added.append((c, new))
+                elif k > 1:
+                    removed.append((b, a))
+                    added.append((new, new))
+                if part:
+                    c = part[0]
+                    removed.append((b, c))
+                    added.append((new, c))
+                prev = part
+            for p in removed:
+                c = stats[p] - 1
+                if c:
+                    stats[p] = c
+                else:
+                    del stats[p]
+            # no occurrence of the merged pair is left
+            del stats[cpair]
+            for p in added:
+                stats[p] = stats_get(p, 0) + 1
+            ids = new.join(parts)
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
             # prints
             if verbose:
-                print(f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {stats[cpair]} occurrences")
+                print(f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {best} occurrences")
 
         # save class variables
         self.merges = merges # used in encode()
