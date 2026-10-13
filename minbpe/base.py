@@ -36,14 +36,17 @@ def merge(ids, pair, idx):
     Example: ids=[1, 2, 3, 1, 2], pair=(1, 2), idx=4 -> [4, 3, 4]
     """
     newids = []
+    append = newids.append
     i = 0
-    while i < len(ids):
+    n = len(ids)
+    p0, p1 = pair
+    while i < n:
         # if not at the very last position AND the pair matches, replace it
-        if ids[i] == pair[0] and i < len(ids) - 1 and ids[i+1] == pair[1]:
-            newids.append(idx)
+        if ids[i] == p0 and i < n - 1 and ids[i+1] == p1:
+            append(idx)
             i += 2
         else:
-            newids.append(ids[i])
+            append(ids[i])
             i += 1
     return newids
 
