@@ -68,10 +68,8 @@ class BasicTokenizer(Tokenizer):
         if len(vocab) and max(vocab) == len(vocab) - 1 and isinstance(ids, (list, tuple)):
             vocab_list = [vocab[i] for i in range(len(vocab))]
             try:
-                if ids and min(ids) < 0:
-                    raise IndexError
-                text_bytes = b"".join([vocab_list[idx] for idx in ids])
-            except (IndexError, TypeError):
+                text_bytes = b"".join([vocab_list[idx] if idx >= 0 else vocab[idx] for idx in ids])
+            except (IndexError, KeyError, TypeError):
                 text_bytes = b"".join([vocab[idx] for idx in ids])
         else:
             text_bytes = b"".join([vocab[idx] for idx in ids])
