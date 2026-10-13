@@ -75,25 +75,30 @@ class RegexTokenizer(Tokenizer):
         # iteratively merge the most common pairs to create new tokens
         merges = {} # (int, int) -> int
         vocab = {idx: bytes([idx]) for idx in range(256)} # idx -> bytes
+        # count the number of times every consecutive pair appears; the counts
+        # are then kept up to date by re-counting only the chunks a merge changes
+        stats = {}
+        stats_get = stats.get
+        for chunk_ids, count in zip(ids, counts):
+            for pair in zip(chunk_ids, chunk_ids[1:]):
+                stats[pair] = stats_get(pair, 0) + count
         for i in range(num_merges):
-            # count the number of times every consecutive pair appears
-            stats = {}
-            stats_get = stats.get
-            for chunk_ids, count in zip(ids, counts):
-                it = iter(chunk_ids)
-                prev = next(it)
-                for curr in it:
-                    pair = (prev, curr)
-                    stats[pair] = stats_get(pair, 0) + count
-                    prev = curr
-            # find the pair with the highest count
-            pair = max(stats, key=stats.get)
+            # find the pair with the highest count; ties go to the pair that
+            # occurs first in the chunks, as with a freshly built stats dict
+            best = max(stats.values())
+            tied = [p for p, c in stats.items() if c == best]
+            if len(tied) == 1:
+                pair = tied[0]
+            else:
+                tied = set(tied)
+                pair = next(p for chunk_ids in ids
+                            for p in zip(chunk_ids, chunk_ids[1:]) if p in tied)
             # mint a new token: assign it the next available id
             idx = 256 + i
             # replace all occurrences of pair in ids with idx
             p0, p1 = pair
             merged_ids = []
-            for chunk_ids in ids:
+            for chunk_ids, count in zip(ids, counts):
                 if p0 not in chunk_ids:
                     merged_ids.append(chunk_ids)
                     continue
@@ -112,16 +117,27 @@ class RegexTokenizer(Tokenizer):
                         if newids is not None:
                             append(chunk_ids[j])
                         j += 1
-                if j == last and newids is not None:
+                if newids is None:
+                    merged_ids.append(chunk_ids)
+                    continue
+                if j == last:
                     append(chunk_ids[j])
-                merged_ids.append(chunk_ids if newids is None else newids)
+                merged_ids.append(newids)
+                old_pairs = list(zip(chunk_ids, chunk_ids[1:]))
+                for p in old_pairs:
+                    stats[p] -= count
+                for p in zip(newids, newids[1:]):
+                    stats[p] = stats_get(p, 0) + count
+                for p in old_pairs:
+                    if stats.get(p) == 0:
+                        del stats[p]
             ids = merged_ids
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
             # prints
             if verbose:
-                print(f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {stats[pair]} occurrences")
+                print(f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {best} occurrences")
 
         # save class variables
         self.merges = merges # used in encode()
