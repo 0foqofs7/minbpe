@@ -91,13 +91,31 @@ class RegexTokenizer(Tokenizer):
                     where[cpair].add(j)
                 else:
                     where[cpair] = {j}
+        import heapq
+        # lazy max-heap of (-count, pair); an entry is current only while
+        # stats[pair] still equals its count, stale entries are skipped
+        heap = [(-c, p) for p, c in stats.items()]
+        heapq.heapify(heap)
+        heappush = heapq.heappush
+        heappop = heapq.heappop
         for i in range(num_merges):
             if not stats:
                 raise ValueError("max() arg is an empty sequence")
             # find the pair with the highest count; ties go to the pair
             # that occurs first in chunk order
-            top = max(stats.values())
-            tied = [p for p, c in stats.items() if c == top]
+            while stats.get(heap[0][1]) != -heap[0][0]:
+                heappop(heap)
+            top = -heap[0][0]
+            tied = []
+            seen = set()
+            while heap and heap[0][0] == -top:
+                p = heappop(heap)[1]
+                if p not in seen and stats.get(p) == top:
+                    seen.add(p)
+                    tied.append(p)
+            for p in tied:
+                heappush(heap, (-top, p))
+            touched = set()
             if len(tied) == 1:
                 cpair = tied[0]
             else:
@@ -137,6 +155,12 @@ class RegexTokenizer(Tokenizer):
                         where[p].add(j)
                     else:
                         where[p] = {j}
+                touched |= old_pairs
+                touched |= new_pairs
+            for p in touched:
+                c = stats.get(p)
+                if c:
+                    heappush(heap, (-c, p))
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
