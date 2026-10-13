@@ -73,26 +73,25 @@ class BasicTokenizer(Tokenizer):
             lefts = [p[-1] for p in parts[:-1] if p]
             rights = [p[0] for p in parts[1:] if p]
             z = m - len(rights) - (not parts[-1])
-            old = Counter([l + a for l in lefts])
-            old.update([b + r for r in rights])
+            old = Counter([l + a for l in lefts] + [b + r for r in rights])
             old[cpair] += m
-            new = Counter([l + c for l in lefts])
-            new.update([c + r for r in rights])
+            new = Counter([l + c for l in lefts] + [c + r for r in rights])
             if z:
                 old[b + a] += z
                 new[c + c] += z
+            # every new pair contains the freshly minted character c, so none
+            # of them is in stats yet and old and new share no pair
+            dict.update(stats, new)
+            for p, n in new.items():
+                heappush(heap, (-n, p))
             # drop pairs whose count reaches zero so the max scan stays small
-            stats.update(new)
             for p, n in old.items():
                 n = stats[p] - n
                 if n:
                     stats[p] = n
+                    heappush(heap, (-n, p))
                 else:
                     del stats[p]
-            for p in new.keys() | old.keys():
-                n = get(p)
-                if n:
-                    heappush(heap, (-n, p))
             # replace all occurrences of pair in ids with idx
             ids = c.join(parts)
             # save the merge
