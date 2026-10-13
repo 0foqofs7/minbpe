@@ -253,7 +253,7 @@ class BasicTokenizer(Tokenizer):
                 if len(s) < 2:
                     break
                 s = s.replace(pair, new)
-            return [ord(c) for c in s]
+            return list(map(ord, s))
         ids = list(text_bytes) # list of integers in range 0..255
         merge_map = build_merge_map(self.merges)
         while len(ids) >= 2:

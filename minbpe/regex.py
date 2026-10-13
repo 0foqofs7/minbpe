@@ -460,13 +460,15 @@ class RegexTokenizer(Tokenizer):
             if steps is not None and (not steps or (steps[0][2] > 255 and steps[-1][2] < 0x10ffff)):
                 sep = chr(steps[-1][2] + 1 if steps else 256)
                 cached = getattr(self, "_encode_ordinary_cache", None)
-                if cached is not None and cached[0] == self.merges:
+                # ordered_merge_steps returns the same list object only while the
+                # merges are unchanged, so the steps identify the cached pieces
+                if cached is not None and cached[0] is steps:
                     piece_ids = cached[1]
                 else:
                     piece_ids = {}
-                    self._encode_ordinary_cache = (dict(self.merges), piece_ids)
-                unique = list(dict.fromkeys(text_chunks))
-                misses = [ch for ch in unique if ch not in piece_ids]
+                    self._encode_ordinary_cache = (steps, piece_ids)
+                # each piece is encoded independently, so their order does not matter
+                misses = list(set(text_chunks).difference(piece_ids))
                 if misses:
                     s = sep.join([ch.encode("utf-8").decode("latin-1") for ch in misses])
                     for pair, new, _ in steps:
@@ -531,7 +533,7 @@ class RegexTokenizer(Tokenizer):
             if part in special:
                 # this is a special token, encode it separately as a special case
                 ids.append(special[part])
-            else:
+            elif part:
                 # this is an ordinary sequence, encode it normally
                 ids.extend(self.encode_ordinary(part))
         return ids
