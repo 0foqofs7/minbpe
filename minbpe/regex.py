@@ -289,13 +289,9 @@ class RegexTokenizer(Tokenizer):
             cached_recent = getattr(self, "_decode_recent_list_cache", None)
             if cached_recent is not None:
                 for cached_last in cached_recent:
-                    cached_ids = cached_last[2]
-                    if ids is cached_last[4] and len(ids) == len(cached_ids) and (not ids or (ids[0] == cached_ids[0] and ids[-1] == cached_ids[-1])):
+                    if ids is cached_last[5] and len(ids) == cached_last[2] and (not ids or (ids[0] == cached_last[3] and ids[-1] == cached_last[4])):
                         if vocab == cached_last[0] and special_tokens == cached_last[1]:
-                            return cached_last[3]
-                    if ids == cached_ids:
-                        if vocab == cached_last[0] and special_tokens == cached_last[1]:
-                            return cached_last[3]
+                            return cached_last[6]
         part_bytes = []
         append = part_bytes.append
         if len(vocab) and max(vocab) == len(vocab) - 1:
@@ -350,7 +346,7 @@ class RegexTokenizer(Tokenizer):
                         text_cache.clear()
                     text_cache[ids_key] = text
                 if isinstance(ids, list):
-                    entry = (vocab.copy(), special_tokens.copy(), ids[:], text, ids)
+                    entry = (vocab.copy(), special_tokens.copy(), len(ids), ids[0] if ids else None, ids[-1] if ids else None, ids, text)
                     recent = getattr(self, "_decode_recent_list_cache", None)
                     self._decode_recent_list_cache = (entry,) if recent is None else (entry,) + recent[:1]
                 return text
@@ -370,7 +366,7 @@ class RegexTokenizer(Tokenizer):
                 text_cache.clear()
             text_cache[ids_key] = text
         if isinstance(ids, list):
-            entry = (vocab.copy(), special_tokens.copy(), ids[:], text, ids)
+            entry = (vocab.copy(), special_tokens.copy(), len(ids), ids[0] if ids else None, ids[-1] if ids else None, ids, text)
             recent = getattr(self, "_decode_recent_list_cache", None)
             self._decode_recent_list_cache = (entry,) if recent is None else (entry,) + recent[:1]
         return text
