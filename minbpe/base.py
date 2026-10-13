@@ -9,6 +9,8 @@ some concessions are made for simplicity.
 # -----------------------------------------------------------------------------
 # a few helper functions useful for both BasicTokenizer and RegexTokenizer
 
+from itertools import chain
+
 BYTE_VOCAB = {idx: bytes([idx]) for idx in range(256)}
 _LOAD_CACHE = {}
 _LOAD_CACHE_MAX = 16
@@ -57,6 +59,34 @@ def build_merge_map(merges):
     for (p0, p1), idx in merges.items():
         merge_map.setdefault(p0, {})[p1] = idx
     return merge_map
+
+
+_MERGE_STEPS_CACHE = None
+
+def ordered_merge_steps(merges):
+    """
+    If every merge creates an int token id larger than both of its (int, >= 0)
+    children, and the ids are distinct and below 0x110000, return the merges
+    in index order as a list of (chr(p0) + chr(p1), chr(idx), idx); else None.
+    The result is cached for the last merges dict it was computed for.
+    """
+    global _MERGE_STEPS_CACHE
+    cached = _MERGE_STEPS_CACHE
+    if (cached is not None and cached[0] is merges and cached[1] == merges
+            and set(map(type, merges.values())) <= {int}
+            and set(map(type, chain.from_iterable(merges))) <= {int}):
+        return cached[2]
+    ordered = sorted(merges.items(), key=lambda item: item[1])
+    prev = -1
+    steps = []
+    for (p0, p1), idx in ordered:
+        if not (type(p0) is int and type(p1) is int and type(idx) is int
+                and 0 <= p0 < idx and 0 <= p1 < idx and prev < idx < 0x110000):
+            return None
+        prev = idx
+        steps.append((chr(p0) + chr(p1), chr(idx), idx))
+    _MERGE_STEPS_CACHE = (merges, dict(merges), steps)
+    return steps
 
 # first two helper functions...
 def replace_control_characters(s: str) -> str:
