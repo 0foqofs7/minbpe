@@ -182,9 +182,15 @@ class RegexTokenizer(Tokenizer):
         # all chunks of text are encoded separately, then results are joined
         ids = []
         merge_lookup = self._get_merge_lookup()
+        # identical chunks encode identically, so reuse results within this call
+        cache = {}
+        cache_get = cache.get
         for chunk in text_chunks:
-            chunk_bytes = chunk.encode("utf-8") # raw bytes
-            chunk_ids = self._encode_chunk(chunk_bytes, merge_lookup)
+            chunk_ids = cache_get(chunk)
+            if chunk_ids is None:
+                chunk_bytes = chunk.encode("utf-8") # raw bytes
+                chunk_ids = self._encode_chunk(chunk_bytes, merge_lookup)
+                cache[chunk] = chunk_ids
             ids.extend(chunk_ids)
         return ids
 
