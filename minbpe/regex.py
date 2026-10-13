@@ -9,6 +9,7 @@ Unlike BasicTokenizer:
 - RegexTokenizer handles optional special tokens.
 """
 
+from itertools import islice
 import regex as re
 from .base import Tokenizer, get_stats, merge, build_merge_lookup
 
@@ -67,7 +68,9 @@ class RegexTokenizer(Tokenizer):
         ids = []
         counts = []
         for chunk, count in chunk_counts.items():
-            chunk_ids = list(chunk.encode("utf-8"))
+            # one code point per token id, so merges can use str.replace
+            # (non-overlapping, left to right, exactly like merge())
+            chunk_ids = chunk.encode("utf-8").decode("latin-1")
             if len(chunk_ids) >= 2:
                 ids.append(chunk_ids)
                 counts.append(count)
@@ -91,60 +94,52 @@ class RegexTokenizer(Tokenizer):
         for i in range(num_merges):
             # find the pair with the highest count; ties go to the pair that
             # occurs first in the chunks, as with a freshly built stats dict
-            best = max(stats.values())
-            tied = [p for p, c in stats.items() if c == best]
-            if len(tied) == 1:
-                pair = tied[0]
+            vals = list(stats.values())
+            best = max(vals)
+            if vals.count(best) == 1:
+                cpair = next(islice(stats, vals.index(best), None))
             else:
+                tied = [p for p, c in stats.items() if c == best]
+                # only the earliest chunk holding a tied pair needs scanning
+                chunk_ids = ids[min([min(where[p]) for p in tied])]
                 tied = set(tied)
-                pair = next(p for chunk_ids in ids
-                            for p in zip(chunk_ids, chunk_ids[1:]) if p in tied)
+                cpair = next(p for p in zip(chunk_ids, chunk_ids[1:]) if p in tied)
             # mint a new token: assign it the next available id
             idx = 256 + i
             # replace all occurrences of pair in ids with idx
-            p0, p1 = pair
-            for ci in where.pop(pair, ()):
+            old = cpair[0] + cpair[1]
+            new = chr(idx)
+            for ci in where.pop(cpair, ()):
                 chunk_ids = ids[ci]
                 count = counts[ci]
-                newids = None
-                j = 0
-                n = len(chunk_ids)
-                last = n - 1
-                while j < last:
-                    if chunk_ids[j] == p0 and chunk_ids[j+1] == p1:
-                        if newids is None:
-                            newids = chunk_ids[:j]
-                            append = newids.append
-                        append(idx)
-                        j += 2
-                    else:
-                        if newids is not None:
-                            append(chunk_ids[j])
-                        j += 1
-                if newids is None:
+                newids = chunk_ids.replace(old, new)
+                if len(newids) == len(chunk_ids):
                     continue
-                if j == last:
-                    append(chunk_ids[j])
                 ids[ci] = newids
+                # (the order of stats does not matter: ties are settled above
+                # by chunk order)
                 old_pairs = list(zip(chunk_ids, chunk_ids[1:]))
                 new_pairs = list(zip(newids, newids[1:]))
                 for p in old_pairs:
-                    stats[p] -= count
+                    c = stats[p] - count
+                    if c:
+                        stats[p] = c
+                    else:
+                        del stats[p]
                 for p in new_pairs:
                     stats[p] = stats_get(p, 0) + count
-                for p in old_pairs:
-                    if stats.get(p) == 0:
-                        del stats[p]
+                old_set = set(old_pairs)
+                old_set.discard(cpair)
                 new_set = set(new_pairs)
-                for p in old_pairs:
-                    if p not in new_set and p != pair:
-                        where[p].discard(ci)
-                for p in new_set:
+                for p in old_set - new_set:
+                    where[p].discard(ci)
+                for p in new_set - old_set:
                     if p in where:
                         where[p].add(ci)
                     else:
                         where[p] = {ci}
             # save the merge
+            pair = (ord(cpair[0]), ord(cpair[1]))
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
             # prints
