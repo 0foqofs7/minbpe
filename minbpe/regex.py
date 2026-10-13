@@ -94,6 +94,9 @@ class RegexTokenizer(Tokenizer):
             p0, p1 = pair
             merged_ids = []
             for chunk_ids in ids:
+                if p0 not in chunk_ids:
+                    merged_ids.append(chunk_ids)
+                    continue
                 newids = None
                 j = 0
                 n = len(chunk_ids)
