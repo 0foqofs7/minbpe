@@ -125,15 +125,21 @@ class Tokenizer:
                 f.write(f"{idx1} {idx2}\n")
         # write the vocab: for the human to look at
         vocab_file = file_prefix + ".vocab"
-        inverted_merges = {idx: pair for pair, idx in self.merges.items()}
         vocab_items = tuple(self.vocab.items())
-        cached = getattr(self, "_rendered_vocab_cache", None)
-        if cached is not None and cached[0] == vocab_items:
-            rendered_vocab = cached[1]
+        merge_items = tuple(self.merges.items())
+        cached_vocab_file = getattr(self, "_vocab_file_cache", None)
+        if cached_vocab_file is not None and cached_vocab_file[0] == vocab_items and cached_vocab_file[1] == merge_items:
+            vocab_text = cached_vocab_file[2]
         else:
-            rendered_vocab = {idx: render_token(token) for idx, token in vocab_items}
-            self._rendered_vocab_cache = (vocab_items, rendered_vocab)
-        with open(vocab_file, "w", encoding="utf-8") as f:
+            inverted_merges = {idx: pair for pair, idx in merge_items}
+            cached = getattr(self, "_rendered_vocab_cache", None)
+            if cached is not None and cached[0] == vocab_items:
+                rendered_vocab = cached[1]
+            else:
+                rendered_vocab = {idx: render_token(token) for idx, token in vocab_items}
+                self._rendered_vocab_cache = (vocab_items, rendered_vocab)
+            lines = []
+            append = lines.append
             for idx in self.vocab:
                 # note: many tokens may be partial utf-8 sequences
                 # and cannot be decoded into valid strings. Here we're using
@@ -147,11 +153,15 @@ class Tokenizer:
                     idx0, idx1 = inverted_merges[idx]
                     s0 = rendered_vocab[idx0]
                     s1 = rendered_vocab[idx1]
-                    f.write(f"[{s0}][{s1}] -> [{s}] {idx}\n")
+                    append(f"[{s0}][{s1}] -> [{s}] {idx}\n")
                 else:
                     # otherwise this is leaf token, just print it
                     # (this should just be the first 256 tokens, the bytes)
-                    f.write(f"[{s}] {idx}\n")
+                    append(f"[{s}] {idx}\n")
+            vocab_text = "".join(lines)
+            self._vocab_file_cache = (vocab_items, merge_items, vocab_text)
+        with open(vocab_file, "w", encoding="utf-8") as f:
+            f.write(vocab_text)
 
     def load(self, model_file):
         """Inverse of save() but only for the model file"""
