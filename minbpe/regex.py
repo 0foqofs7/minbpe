@@ -61,13 +61,15 @@ class RegexTokenizer(Tokenizer):
         stats_get = stats.get
         # pair -> indices of the chunks that contain it
         where = {}
+        where_get = where.get
         for ci, (chunk_ids, count) in enumerate(zip(ids, counts)):
             for pair in zip(chunk_ids, chunk_ids[1:]):
                 stats[pair] = stats_get(pair, 0) + count
-                if pair in where:
-                    where[pair].add(ci)
-                else:
+                w = where_get(pair)
+                if w is None:
                     where[pair] = {ci}
+                else:
+                    w.add(ci)
         # lazy max-heap of (-count, pair); an entry is current only while
         # stats still holds that count for the pair
         heap = [(-c, p) for p, c in stats.items()]
@@ -121,31 +123,66 @@ class RegexTokenizer(Tokenizer):
                     continue
                 ids[ci] = new.join(parts)
                 count = counts[ci]
-                added = []
-                prev = parts[0]
-                for k in range(1, len(parts)):
-                    part = parts[k]
+                if len(parts) == 2:
+                    # a single occurrence: at most one pair on each side
+                    prev, part = parts
                     if prev:
                         c = prev[-1]
                         p = (c, a)
                         delta[p] = delta_get(p, 0) - count
-                        added.append((c, new))
-                    elif k > 1:
-                        p = (b, a)
-                        delta[p] = delta_get(p, 0) - count
-                        added.append((new, new))
+                        p = (c, new)
+                        delta[p] = delta_get(p, 0) + count
+                        w = where_get(p)
+                        if w is None:
+                            where[p] = {ci}
+                        else:
+                            w.add(ci)
                     if part:
                         c = part[0]
                         p = (b, c)
                         delta[p] = delta_get(p, 0) - count
-                        added.append((new, c))
-                    prev = part
-                for p in added:
-                    delta[p] = delta_get(p, 0) + count
-                    if p in where:
-                        where[p].add(ci)
+                        p = (new, c)
+                        delta[p] = delta_get(p, 0) + count
+                        w = where_get(p)
+                        if w is None:
+                            where[p] = {ci}
+                        else:
+                            w.add(ci)
+                    continue
+                # None marks the start of the chunk ("" marks two adjacent
+                # occurrences)
+                prev = parts[0] or None
+                for part in parts[1:]:
+                    if prev:
+                        c = prev[-1]
+                        p = (c, a)
+                        delta[p] = delta_get(p, 0) - count
+                        p = (c, new)
+                    elif prev is not None:
+                        p = (b, a)
+                        delta[p] = delta_get(p, 0) - count
+                        p = (new, new)
                     else:
-                        where[p] = {ci}
+                        p = None
+                    if p is not None:
+                        delta[p] = delta_get(p, 0) + count
+                        w = where_get(p)
+                        if w is None:
+                            where[p] = {ci}
+                        else:
+                            w.add(ci)
+                    if part:
+                        c = part[0]
+                        p = (b, c)
+                        delta[p] = delta_get(p, 0) - count
+                        p = (new, c)
+                        delta[p] = delta_get(p, 0) + count
+                        w = where_get(p)
+                        if w is None:
+                            where[p] = {ci}
+                        else:
+                            w.add(ci)
+                    prev = part
             # (the order of stats does not matter: ties are settled above
             # by chunk order); pairs whose count is unchanged keep their
             # current heap entry
