@@ -32,6 +32,7 @@ class RegexTokenizer(Tokenizer):
         self.compiled_pattern = re.compile(self.pattern)
         self.special_tokens = {}
         self.inverse_special_tokens = {}
+        self.inverse_special_tokens_bytes = {}
 
     def train(self, text, vocab_size, verbose=False):
         assert vocab_size >= 256
@@ -74,17 +75,33 @@ class RegexTokenizer(Tokenizer):
         # example: {"<|endoftext|>": 100257}
         self.special_tokens = special_tokens
         self.inverse_special_tokens = {v: k for k, v in special_tokens.items()}
+        self.inverse_special_tokens_bytes = {v: k.encode("utf-8") for k, v in special_tokens.items()}
 
     def decode(self, ids):
         # given ids (list of integers), return Python string
+        vocab = self.vocab
         part_bytes = []
-        for idx in ids:
-            if idx in self.vocab:
-                part_bytes.append(self.vocab[idx])
-            elif idx in self.inverse_special_tokens:
-                part_bytes.append(self.inverse_special_tokens[idx].encode("utf-8"))
-            else:
-                raise ValueError(f"invalid token id: {idx}")
+        append = part_bytes.append
+        if len(vocab) and max(vocab) == len(vocab) - 1:
+            vocab_list = [vocab[i] for i in range(len(vocab))]
+            vocab_len = len(vocab_list)
+            special_tokens = self.inverse_special_tokens_bytes
+            for idx in ids:
+                if 0 <= idx < vocab_len:
+                    append(vocab_list[idx])
+                elif idx in special_tokens:
+                    append(special_tokens[idx])
+                else:
+                    raise ValueError(f"invalid token id: {idx}")
+        else:
+            special_tokens = self.inverse_special_tokens
+            for idx in ids:
+                if idx in vocab:
+                    append(vocab[idx])
+                elif idx in special_tokens:
+                    append(special_tokens[idx].encode("utf-8"))
+                else:
+                    raise ValueError(f"invalid token id: {idx}")
         text_bytes = b"".join(part_bytes)
         text = text_bytes.decode("utf-8", errors="replace")
         return text

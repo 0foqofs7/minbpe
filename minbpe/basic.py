@@ -50,7 +50,7 @@ class BasicTokenizer(Tokenizer):
 
     def decode(self, ids):
         # given ids (list of integers), return Python string
-        text_bytes = b"".join(self.vocab[idx] for idx in ids)
+        text_bytes = b"".join([self.vocab[idx] for idx in ids])
         text = text_bytes.decode("utf-8", errors="replace")
         return text
 
