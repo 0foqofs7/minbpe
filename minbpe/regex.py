@@ -79,9 +79,15 @@ class RegexTokenizer(Tokenizer):
         # are then kept up to date by re-counting only the chunks a merge changes
         stats = {}
         stats_get = stats.get
-        for chunk_ids, count in zip(ids, counts):
+        # pair -> indices of the chunks that contain it
+        where = {}
+        for ci, (chunk_ids, count) in enumerate(zip(ids, counts)):
             for pair in zip(chunk_ids, chunk_ids[1:]):
                 stats[pair] = stats_get(pair, 0) + count
+                if pair in where:
+                    where[pair].add(ci)
+                else:
+                    where[pair] = {ci}
         for i in range(num_merges):
             # find the pair with the highest count; ties go to the pair that
             # occurs first in the chunks, as with a freshly built stats dict
@@ -97,11 +103,9 @@ class RegexTokenizer(Tokenizer):
             idx = 256 + i
             # replace all occurrences of pair in ids with idx
             p0, p1 = pair
-            merged_ids = []
-            for chunk_ids, count in zip(ids, counts):
-                if p0 not in chunk_ids:
-                    merged_ids.append(chunk_ids)
-                    continue
+            for ci in where.pop(pair, ()):
+                chunk_ids = ids[ci]
+                count = counts[ci]
                 newids = None
                 j = 0
                 n = len(chunk_ids)
@@ -118,20 +122,28 @@ class RegexTokenizer(Tokenizer):
                             append(chunk_ids[j])
                         j += 1
                 if newids is None:
-                    merged_ids.append(chunk_ids)
                     continue
                 if j == last:
                     append(chunk_ids[j])
-                merged_ids.append(newids)
+                ids[ci] = newids
                 old_pairs = list(zip(chunk_ids, chunk_ids[1:]))
+                new_pairs = list(zip(newids, newids[1:]))
                 for p in old_pairs:
                     stats[p] -= count
-                for p in zip(newids, newids[1:]):
+                for p in new_pairs:
                     stats[p] = stats_get(p, 0) + count
                 for p in old_pairs:
                     if stats.get(p) == 0:
                         del stats[p]
-            ids = merged_ids
+                new_set = set(new_pairs)
+                for p in old_pairs:
+                    if p not in new_set and p != pair:
+                        where[p].discard(ci)
+                for p in new_set:
+                    if p in where:
+                        where[p].add(ci)
+                    else:
+                        where[p] = {ci}
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
