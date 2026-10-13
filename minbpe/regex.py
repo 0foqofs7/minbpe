@@ -110,20 +110,35 @@ class RegexTokenizer(Tokenizer):
         part_bytes = []
         append = part_bytes.append
         if len(vocab) and max(vocab) == len(vocab) - 1:
-            vocab_list = [vocab[i] for i in range(len(vocab))]
-            vocab_len = len(vocab_list)
             special_tokens = self.inverse_special_tokens_bytes
-            for idx in ids:
+            max_idx = max(len(vocab) - 1, max(special_tokens, default=0))
+            lookup = [None] * (max_idx + 1)
+            for i in range(len(vocab)):
+                lookup[i] = vocab[i]
+            for idx, token in special_tokens.items():
                 if idx >= 0:
-                    try:
-                        append(vocab_list[idx])
-                        continue
-                    except IndexError:
-                        pass
-                if idx in special_tokens:
-                    append(special_tokens[idx])
-                else:
-                    raise ValueError(f"invalid token id: {idx}")
+                    lookup[idx] = token
+            try:
+                part_bytes = [lookup[idx] if idx >= 0 else special_tokens[idx] for idx in ids]
+                text_bytes = b"".join(part_bytes)
+            except (IndexError, KeyError, TypeError):
+                part_bytes = []
+                append = part_bytes.append
+                vocab_list = [vocab[i] for i in range(len(vocab))]
+                for idx in ids:
+                    if idx >= 0:
+                        try:
+                            append(vocab_list[idx])
+                            continue
+                        except IndexError:
+                            pass
+                    if idx in special_tokens:
+                        append(special_tokens[idx])
+                    else:
+                        raise ValueError(f"invalid token id: {idx}")
+            else:
+                text = text_bytes.decode("utf-8", errors="replace")
+                return text
         else:
             special_tokens = self.inverse_special_tokens
             for idx in ids:
