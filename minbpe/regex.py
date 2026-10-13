@@ -338,8 +338,7 @@ class RegexTokenizer(Tokenizer):
                 unique = list(dict.fromkeys(text_chunks))
                 s = sep.join([ch.encode("utf-8").decode("latin-1") for ch in unique])
                 for pair, new, _ in steps:
-                    if pair in s:
-                        s = s.replace(pair, new)
+                    s = s.replace(pair, new)
                 piece_of = dict(zip(unique, s.split(sep)))
                 return list(map(ord, "".join(map(piece_of.__getitem__, text_chunks))))
         # all chunks of text are encoded separately, then results are joined
