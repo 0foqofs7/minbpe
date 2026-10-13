@@ -95,6 +95,7 @@ class BasicTokenizer(Tokenizer):
             # find the pair with the lowest merge index
             pair = None
             idx = None
+            pair_pos = None
             for i in range(len(ids) - 1):
                 nexts = merge_map.get(ids[i])
                 if nexts is None:
@@ -103,20 +104,25 @@ class BasicTokenizer(Tokenizer):
                 if merge_idx is not None and (idx is None or merge_idx < idx):
                     pair = (ids[i], ids[i+1])
                     idx = merge_idx
+                    pair_pos = i
             # if there are no more merges available, break
             if pair is None:
                 break # nothing else can be merged anymore
-            newids = []
+            newids = ids[:pair_pos]
             append = newids.append
-            i = 0
+            append(idx)
+            i = pair_pos + 2
             n = len(ids)
+            last = n - 1
             p0, p1 = pair
-            while i < n:
-                if ids[i] == p0 and i < n - 1 and ids[i+1] == p1:
+            while i < last:
+                if ids[i] == p0 and ids[i+1] == p1:
                     append(idx)
                     i += 2
                 else:
                     append(ids[i])
                     i += 1
+            if i == last:
+                append(ids[i])
             ids = newids
         return ids
