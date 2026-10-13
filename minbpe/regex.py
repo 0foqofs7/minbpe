@@ -117,7 +117,7 @@ class RegexTokenizer(Tokenizer):
         # let's begin. first, convert all bytes to integers in range 0..255
         ids = list(text_bytes)
         if merge_lookup is None:
-            merge_lookup = build_merge_lookup(self.merges)
+            merge_lookup = self._get_merge_lookup()
         while len(ids) >= 2:
             # find the pair with the lowest merge index
             best_pair = None
@@ -143,7 +143,7 @@ class RegexTokenizer(Tokenizer):
         text_chunks = re.findall(self.compiled_pattern, text)
         # all chunks of text are encoded separately, then results are joined
         ids = []
-        merge_lookup = build_merge_lookup(self.merges)
+        merge_lookup = self._get_merge_lookup()
         for chunk in text_chunks:
             chunk_bytes = chunk.encode("utf-8") # raw bytes
             chunk_ids = self._encode_chunk(chunk_bytes, merge_lookup)

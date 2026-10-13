@@ -92,10 +92,28 @@ class Tokenizer:
 
     def __init__(self):
         # default: vocab size of 256 (all bytes), no merges, no patterns
+        self._merge_lookup = None
+        self._merge_lookup_size = -1
         self.merges = {} # (int, int) -> int
         self.pattern = "" # str
         self.special_tokens = {} # str -> int, e.g. {'<|endoftext|>': 100257}
         self.vocab = self._build_vocab() # int -> bytes
+
+    @property
+    def merges(self):
+        return self._merges
+
+    @merges.setter
+    def merges(self, merges):
+        self._merges = merges
+        self._merge_lookup = None
+        self._merge_lookup_size = -1
+
+    def _get_merge_lookup(self):
+        if self._merge_lookup is None or self._merge_lookup_size != len(self.merges):
+            self._merge_lookup = build_merge_lookup(self.merges)
+            self._merge_lookup_size = len(self.merges)
+        return self._merge_lookup
 
     def train(self, text, vocab_size, verbose=False):
         # Tokenizer can train a vocabulary of size vocab_size from text

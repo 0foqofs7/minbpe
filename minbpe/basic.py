@@ -58,7 +58,7 @@ class BasicTokenizer(Tokenizer):
         # given a string text, return the token ids
         text_bytes = text.encode("utf-8") # raw bytes
         ids = list(text_bytes) # list of integers in range 0..255
-        merge_lookup = build_merge_lookup(self.merges)
+        merge_lookup = self._get_merge_lookup()
         while len(ids) >= 2:
             # find the pair with the lowest merge index
             best_pair = None
