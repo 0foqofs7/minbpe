@@ -63,7 +63,16 @@ class BasicTokenizer(Tokenizer):
     def decode(self, ids):
         # given ids (list of integers), return Python string
         vocab = self.vocab
-        text_bytes = b"".join([vocab[idx] for idx in ids])
+        if len(vocab) and max(vocab) == len(vocab) - 1 and isinstance(ids, (list, tuple)):
+            vocab_list = [vocab[i] for i in range(len(vocab))]
+            try:
+                if ids and min(ids) < 0:
+                    raise IndexError
+                text_bytes = b"".join([vocab_list[idx] for idx in ids])
+            except (IndexError, TypeError):
+                text_bytes = b"".join([vocab[idx] for idx in ids])
+        else:
+            text_bytes = b"".join([vocab[idx] for idx in ids])
         text = text_bytes.decode("utf-8", errors="replace")
         return text
 
