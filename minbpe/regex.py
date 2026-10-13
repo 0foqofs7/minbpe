@@ -51,8 +51,10 @@ class RegexTokenizer(Tokenizer):
             # count the number of times every consecutive pair appears
             stats = {}
             for chunk_ids in ids:
-                # passing in stats will update it in place, adding up counts
-                get_stats(chunk_ids, stats)
+                # count pairs in this chunk, adding up counts across chunks
+                for j in range(len(chunk_ids) - 1):
+                    pair = (chunk_ids[j], chunk_ids[j+1])
+                    stats[pair] = stats.get(pair, 0) + 1
             # find the pair with the highest count
             pair = max(stats, key=stats.get)
             # mint a new token: assign it the next available id
