@@ -176,7 +176,7 @@ class Tokenizer:
         merge_items = tuple(self.merges.items())
         cached_vocab_file = getattr(self, "_vocab_file_cache", None)
         if cached_vocab_file is not None and cached_vocab_file[0] == vocab_items and cached_vocab_file[1] == merge_items:
-            vocab_text = cached_vocab_file[2]
+            vocab_bytes = cached_vocab_file[2]
         else:
             inverted_merges = {idx: pair for pair, idx in merge_items}
             lines = []
@@ -197,10 +197,10 @@ class Tokenizer:
                     # otherwise this is leaf token, just print it
                     # (this should just be the first 256 tokens, the bytes)
                     append(render_vocab_line(idx, token))
-            vocab_text = "".join(lines)
-            self._vocab_file_cache = (vocab_items, merge_items, vocab_text)
-        with open(vocab_file, "w", encoding="utf-8") as f:
-            f.write(vocab_text)
+            vocab_bytes = "".join(lines).encode("utf-8")
+            self._vocab_file_cache = (vocab_items, merge_items, vocab_bytes)
+        with open(vocab_file, "wb") as f:
+            f.write(vocab_bytes)
 
     def load(self, model_file):
         """Inverse of save() but only for the model file"""
