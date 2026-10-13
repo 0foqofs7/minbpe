@@ -206,7 +206,8 @@ class RegexTokenizer(Tokenizer):
             merge_map = build_merge_map(self.merges)
         while len(ids) >= 2:
             # find the pair with the lowest merge index
-            pair = None
+            p0 = None
+            p1 = None
             idx = None
             pair_pos = None
             for i in range(len(ids) - 1):
@@ -215,11 +216,12 @@ class RegexTokenizer(Tokenizer):
                     continue
                 merge_idx = nexts.get(ids[i+1])
                 if merge_idx is not None and (idx is None or merge_idx < idx):
-                    pair = (ids[i], ids[i+1])
+                    p0 = ids[i]
+                    p1 = ids[i+1]
                     idx = merge_idx
                     pair_pos = i
             # if there are no more merges available, break
-            if pair is None:
+            if p0 is None:
                 break # nothing else can be merged anymore
             newids = ids[:pair_pos]
             append = newids.append
@@ -227,7 +229,6 @@ class RegexTokenizer(Tokenizer):
             i = pair_pos + 2
             n = len(ids)
             last = n - 1
-            p0, p1 = pair
             while i < last:
                 if ids[i] == p0 and ids[i+1] == p1:
                     append(idx)
