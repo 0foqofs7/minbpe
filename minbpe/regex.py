@@ -137,11 +137,8 @@ class RegexTokenizer(Tokenizer):
                     if idx >= 0:
                         lookup[idx] = token
                 self._decode_lookup_cache = (vocab_items, special_items, lookup)
-            if isinstance(ids, (list, tuple)):
-                if isinstance(ids, list):
-                    ids_key = tuple(ids)
-                else:
-                    ids_key = ids
+            if isinstance(ids, tuple):
+                ids_key = ids
                 cached_texts = getattr(self, "_decode_text_cache", None)
                 if cached_texts is not None and cached_texts[0] == vocab_items and cached_texts[1] == special_items:
                     cached_text = cached_texts[2].get(ids_key)
@@ -175,10 +172,10 @@ class RegexTokenizer(Tokenizer):
                     if len(text_cache) >= 4:
                         text_cache.clear()
                     text_cache[ids_key] = text
-                    if isinstance(ids, list):
-                        entry = (vocab.copy(), special_tokens.copy(), ids[:], text)
-                        recent = getattr(self, "_decode_recent_list_cache", None)
-                        self._decode_recent_list_cache = (entry,) if recent is None else (entry,) + recent[:1]
+                if isinstance(ids, list):
+                    entry = (vocab.copy(), special_tokens.copy(), ids[:], text)
+                    recent = getattr(self, "_decode_recent_list_cache", None)
+                    self._decode_recent_list_cache = (entry,) if recent is None else (entry,) + recent[:1]
                 return text
         else:
             special_tokens = self.inverse_special_tokens
@@ -195,10 +192,10 @@ class RegexTokenizer(Tokenizer):
             if len(text_cache) >= 4:
                 text_cache.clear()
             text_cache[ids_key] = text
-            if isinstance(ids, list):
-                entry = (vocab.copy(), special_tokens.copy(), ids[:], text)
-                recent = getattr(self, "_decode_recent_list_cache", None)
-                self._decode_recent_list_cache = (entry,) if recent is None else (entry,) + recent[:1]
+        if isinstance(ids, list):
+            entry = (vocab.copy(), special_tokens.copy(), ids[:], text)
+            recent = getattr(self, "_decode_recent_list_cache", None)
+            self._decode_recent_list_cache = (entry,) if recent is None else (entry,) + recent[:1]
         return text
 
     def _encode_chunk(self, text_bytes, merge_map=None):

@@ -88,19 +88,17 @@ class BasicTokenizer(Tokenizer):
             else:
                 vocab_list = [vocab[i] for i in range(len(vocab))]
                 self._decode_vocab_list_cache = (vocab_items, vocab_list)
-            if isinstance(ids, list):
-                ids_key = tuple(ids)
-            else:
+            if isinstance(ids, tuple):
                 ids_key = ids
-            cached_texts = getattr(self, "_decode_text_cache", None)
-            if cached_texts is not None and cached_texts[0] == vocab_items:
-                cached_text = cached_texts[1].get(ids_key)
-                if cached_text is not None:
-                    return cached_text
-                text_cache = cached_texts[1]
-            else:
-                text_cache = {}
-                self._decode_text_cache = (vocab_items, text_cache)
+                cached_texts = getattr(self, "_decode_text_cache", None)
+                if cached_texts is not None and cached_texts[0] == vocab_items:
+                    cached_text = cached_texts[1].get(ids_key)
+                    if cached_text is not None:
+                        return cached_text
+                    text_cache = cached_texts[1]
+                else:
+                    text_cache = {}
+                    self._decode_text_cache = (vocab_items, text_cache)
             try:
                 text_bytes = b"".join([vocab_list[idx] if idx >= 0 else vocab[idx] for idx in ids])
             except (IndexError, KeyError, TypeError):
@@ -112,8 +110,8 @@ class BasicTokenizer(Tokenizer):
             if len(text_cache) >= 4:
                 text_cache.clear()
             text_cache[ids_key] = text
-            if isinstance(ids, list):
-                self._decode_last_list_cache = (vocab.copy(), ids[:], text)
+        if isinstance(ids, list):
+            self._decode_last_list_cache = (vocab.copy(), ids[:], text)
         return text
 
     def encode(self, text):
