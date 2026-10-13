@@ -126,7 +126,13 @@ class Tokenizer:
         # write the vocab: for the human to look at
         vocab_file = file_prefix + ".vocab"
         inverted_merges = {idx: pair for pair, idx in self.merges.items()}
-        rendered_vocab = {idx: render_token(token) for idx, token in self.vocab.items()}
+        vocab_items = tuple(self.vocab.items())
+        cached = getattr(self, "_rendered_vocab_cache", None)
+        if cached is not None and cached[0] == vocab_items:
+            rendered_vocab = cached[1]
+        else:
+            rendered_vocab = {idx: render_token(token) for idx, token in vocab_items}
+            self._rendered_vocab_cache = (vocab_items, rendered_vocab)
         with open(vocab_file, "w", encoding="utf-8") as f:
             for idx in self.vocab:
                 # note: many tokens may be partial utf-8 sequences
