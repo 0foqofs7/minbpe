@@ -157,7 +157,7 @@ class Tokenizer:
         merge_keys = tuple(self.merges)
         cached_model_file = getattr(self, "_model_file_cache", None)
         if cached_model_file is not None and cached_model_file[0] == self.pattern and cached_model_file[1] == special_items and cached_model_file[2] == merge_keys:
-            model_text = cached_model_file[3]
+            model_bytes = cached_model_file[3]
         else:
             lines = ["minbpe v1\n", f"{self.pattern}\n", f"{len(special_items)}\n"]
             append = lines.append
@@ -166,10 +166,10 @@ class Tokenizer:
             # the merges dict
             for pair in merge_keys:
                 append(render_merge_line(pair))
-            model_text = "".join(lines)
-            self._model_file_cache = (self.pattern, special_items, merge_keys, model_text)
-        with open(model_file, 'w') as f:
-            f.write(model_text)
+            model_bytes = "".join(lines).encode("utf-8")
+            self._model_file_cache = (self.pattern, special_items, merge_keys, model_bytes)
+        with open(model_file, "wb") as f:
+            f.write(model_bytes)
         # write the vocab: for the human to look at
         vocab_file = file_prefix + ".vocab"
         vocab_items = tuple(self.vocab.items())
@@ -229,13 +229,13 @@ class Tokenizer:
         num_special = int(lines[2].strip())
         line_i = 3
         for line in lines[line_i:line_i + num_special]:
-            special, special_idx = line.strip().split()
+            special, special_idx = line.split()
             special_tokens[special] = int(special_idx)
         line_i += num_special
         # read the merges
         for line in lines[line_i:]:
-            idx1, idx2 = map(int, line.split())
-            merges[(idx1, idx2)] = idx
+            idx1, idx2 = line.split()
+            merges[(int(idx1), int(idx2))] = idx
             idx += 1
         self.merges = merges
         self.special_tokens = special_tokens
