@@ -89,9 +89,13 @@ class RegexTokenizer(Tokenizer):
             vocab_len = len(vocab_list)
             special_tokens = self.inverse_special_tokens_bytes
             for idx in ids:
-                if 0 <= idx < vocab_len:
-                    append(vocab_list[idx])
-                elif idx in special_tokens:
+                if idx >= 0:
+                    try:
+                        append(vocab_list[idx])
+                        continue
+                    except IndexError:
+                        pass
+                if idx in special_tokens:
                     append(special_tokens[idx])
                 else:
                     raise ValueError(f"invalid token id: {idx}")
