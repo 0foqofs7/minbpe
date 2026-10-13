@@ -9,8 +9,17 @@ Unlike BasicTokenizer:
 - RegexTokenizer handles optional special tokens.
 """
 
-import regex as re
 from .base import Tokenizer, get_stats, build_merge_map
+
+
+class _LazyRegexModule:
+    # imports the regex module on first use (save/load never need it)
+    def __getattr__(self, name):
+        import regex
+        globals()["re"] = regex
+        return getattr(regex, name)
+
+re = _LazyRegexModule()
 
 
 # the main GPT text split patterns, see
@@ -29,10 +38,23 @@ class RegexTokenizer(Tokenizer):
         """
         super().__init__()
         self.pattern = GPT4_SPLIT_PATTERN if pattern is None else pattern
-        self.compiled_pattern = re.compile(self.pattern)
+        # the split pattern is compiled on first use (save/load never need it)
+        self._compiled_source = self.pattern
+        self._compiled_pattern = None
         self.special_tokens = {}
         self.inverse_special_tokens = {}
         self.inverse_special_tokens_bytes = {}
+
+    @property
+    def compiled_pattern(self):
+        compiled = self._compiled_pattern
+        if compiled is None:
+            compiled = self._compiled_pattern = re.compile(self._compiled_source)
+        return compiled
+
+    @compiled_pattern.setter
+    def compiled_pattern(self, value):
+        self._compiled_pattern = value
 
     def train(self, text, vocab_size, verbose=False):
         assert vocab_size >= 256
