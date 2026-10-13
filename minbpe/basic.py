@@ -76,6 +76,10 @@ class BasicTokenizer(Tokenizer):
         # given ids (list of integers), return Python string
         vocab = self.vocab
         text_cache = None
+        if isinstance(ids, list):
+            cached_last = getattr(self, "_decode_last_list_cache", None)
+            if cached_last is not None and ids == cached_last[1] and vocab == cached_last[0]:
+                return cached_last[2]
         if len(vocab) and max(vocab) == len(vocab) - 1 and isinstance(ids, (list, tuple)):
             vocab_items = tuple(vocab.items())
             cached = getattr(self, "_decode_vocab_list_cache", None)
@@ -85,9 +89,6 @@ class BasicTokenizer(Tokenizer):
                 vocab_list = [vocab[i] for i in range(len(vocab))]
                 self._decode_vocab_list_cache = (vocab_items, vocab_list)
             if isinstance(ids, list):
-                cached_last = getattr(self, "_decode_last_list_cache", None)
-                if cached_last is not None and cached_last[0] == vocab_items and ids == cached_last[1]:
-                    return cached_last[2]
                 ids_key = tuple(ids)
             else:
                 ids_key = ids
@@ -112,7 +113,7 @@ class BasicTokenizer(Tokenizer):
                 text_cache.clear()
             text_cache[ids_key] = text
             if isinstance(ids, list):
-                self._decode_last_list_cache = (vocab_items, ids[:], text)
+                self._decode_last_list_cache = (vocab.copy(), ids[:], text)
         return text
 
     def encode(self, text):

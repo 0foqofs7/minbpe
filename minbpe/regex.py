@@ -110,9 +110,17 @@ class RegexTokenizer(Tokenizer):
     def decode(self, ids):
         # given ids (list of integers), return Python string
         vocab = self.vocab
+        text_cache = None
+        if isinstance(ids, list):
+            cached_recent = getattr(self, "_decode_recent_list_cache", None)
+            if cached_recent is not None:
+                for cached_last in cached_recent:
+                    if ids == cached_last[2]:
+                        special_tokens = self.inverse_special_tokens_bytes
+                        if vocab == cached_last[0] and special_tokens == cached_last[1]:
+                            return cached_last[3]
         part_bytes = []
         append = part_bytes.append
-        text_cache = None
         if len(vocab) and max(vocab) == len(vocab) - 1:
             special_tokens = self.inverse_special_tokens_bytes
             vocab_items = tuple(vocab.items())
@@ -131,9 +139,6 @@ class RegexTokenizer(Tokenizer):
                 self._decode_lookup_cache = (vocab_items, special_items, lookup)
             if isinstance(ids, (list, tuple)):
                 if isinstance(ids, list):
-                    cached_last = getattr(self, "_decode_last_list_cache", None)
-                    if cached_last is not None and cached_last[0] == vocab_items and cached_last[1] == special_items and ids == cached_last[2]:
-                        return cached_last[3]
                     ids_key = tuple(ids)
                 else:
                     ids_key = ids
@@ -171,7 +176,9 @@ class RegexTokenizer(Tokenizer):
                         text_cache.clear()
                     text_cache[ids_key] = text
                     if isinstance(ids, list):
-                        self._decode_last_list_cache = (vocab_items, special_items, ids[:], text)
+                        entry = (vocab.copy(), special_tokens.copy(), ids[:], text)
+                        recent = getattr(self, "_decode_recent_list_cache", None)
+                        self._decode_recent_list_cache = (entry,) if recent is None else (entry,) + recent[:1]
                 return text
         else:
             special_tokens = self.inverse_special_tokens
@@ -189,7 +196,9 @@ class RegexTokenizer(Tokenizer):
                 text_cache.clear()
             text_cache[ids_key] = text
             if isinstance(ids, list):
-                self._decode_last_list_cache = (vocab_items, special_items, ids[:], text)
+                entry = (vocab.copy(), special_tokens.copy(), ids[:], text)
+                recent = getattr(self, "_decode_recent_list_cache", None)
+                self._decode_recent_list_cache = (entry,) if recent is None else (entry,) + recent[:1]
         return text
 
     def _encode_chunk(self, text_bytes, merge_map=None):
