@@ -93,18 +93,22 @@ class RegexTokenizer(Tokenizer):
         # return the token ids
         # let's begin. first, convert all bytes to integers in range 0..255
         ids = list(text_bytes)
+        merges = self.merges
         while len(ids) >= 2:
             # find the pair with the lowest merge index
-            pair = min(zip(ids, ids[1:]), key=lambda p: self.merges.get(p, float("inf")))
-            # subtle: if there are no more merges available, the key will
-            # result in an inf for every single pair, and the min will be
-            # just the first pair in the list, arbitrarily
-            # we can detect this terminating case by a membership check
-            if pair not in self.merges:
+            best_pair = None
+            best_idx = None
+            it = iter(ids)
+            prev = next(it)
+            for curr in it:
+                idx = merges.get((prev, curr))
+                if idx is not None and (best_idx is None or idx < best_idx):
+                    best_pair = (prev, curr)
+                    best_idx = idx
+                prev = curr
+            if best_pair is None:
                 break # nothing else can be merged anymore
-            # otherwise let's merge the best pair (lowest merge index)
-            idx = self.merges[pair]
-            ids = merge(ids, pair, idx)
+            ids = merge(ids, best_pair, best_idx)
         return ids
 
     def encode_ordinary(self, text):
