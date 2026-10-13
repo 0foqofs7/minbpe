@@ -10,7 +10,7 @@ But:
 """
 
 from collections import Counter
-from itertools import pairwise
+from itertools import compress
 
 from .base import Tokenizer, get_stats, merge, build_merge_map
 
@@ -33,22 +33,47 @@ class BasicTokenizer(Tokenizer):
         # iteratively merge the most common pairs to create new tokens
         merges = {} # (int, int) -> int
         vocab = {idx: bytes([idx]) for idx in range(256)} # int -> bytes
+        # count up the number of times every consecutive pair appears, keyed by
+        # the two-character string; kept up to date incrementally after each merge
+        stats = Counter(map(str.__add__, ids, ids[1:]))
         for i in range(num_merges):
-            # count up the number of times every consecutive pair appears
-            stats = Counter(pairwise(ids))
-            # find the pair with the highest count
-            cpair = stats.most_common(1)[0][0]
+            # find the pair with the highest count; ties go to the pair that
+            # occurs first in ids
+            top = max(stats.values(), default=0)
+            if not top:
+                raise IndexError("list index out of range")
+            cands = list(compress(stats, map(top.__eq__, stats.values())))
+            cpair = cands[0] if len(cands) == 1 else min(cands, key=ids.find)
             pair = (ord(cpair[0]), ord(cpair[1]))
             # mint a new token: assign it the next available id
             idx = 256 + i
+            c = chr(idx)
+            # update the pair counts around each run of adjacent occurrences
+            old = []
+            new = []
+            j = ids.find(cpair)
+            while j != -1:
+                s = j
+                e = j + 2
+                j = ids.find(cpair, e)
+                while j == e:
+                    e += 2
+                    j = ids.find(cpair, e)
+                lo = s - 1 if s else 0
+                seg = ids[lo:e + 1]
+                old.extend(map(str.__add__, seg, seg[1:]))
+                seg = ids[lo:s] + c * ((e - s) // 2) + ids[e:e + 1]
+                new.extend(map(str.__add__, seg, seg[1:]))
+            stats.subtract(Counter(old))
+            stats.update(new)
             # replace all occurrences of pair in ids with idx
-            ids = ids.replace(cpair[0] + cpair[1], chr(idx))
+            ids = ids.replace(cpair, c)
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
             # prints
             if verbose:
-                print(f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {stats[cpair]} occurrences")
+                print(f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {top} occurrences")
 
         # save class variables
         self.merges = merges # used in encode()
