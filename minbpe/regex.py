@@ -64,6 +64,7 @@ class RegexTokenizer(Tokenizer):
 
         # input text preprocessing
         ids = [list(ch.encode("utf-8")) for ch in text_chunks]
+        ids = [chunk_ids for chunk_ids in ids if len(chunk_ids) >= 2]
 
         # iteratively merge the most common pairs to create new tokens
         merges = {} # (int, int) -> int
