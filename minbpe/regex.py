@@ -380,12 +380,25 @@ class RegexTokenizer(Tokenizer):
             steps = ordered_merge_steps(self.merges)
             if steps is not None and (not steps or (steps[0][2] > 255 and steps[-1][2] < 0x10ffff)):
                 sep = chr(steps[-1][2] + 1 if steps else 256)
+                cached = getattr(self, "_encode_ordinary_cache", None)
+                if cached is not None and cached[0] == self.merges:
+                    piece_ids = cached[1]
+                else:
+                    piece_ids = {}
+                    self._encode_ordinary_cache = (dict(self.merges), piece_ids)
                 unique = list(dict.fromkeys(text_chunks))
-                s = sep.join([ch.encode("utf-8").decode("latin-1") for ch in unique])
-                for pair, new, _ in steps:
-                    s = s.replace(pair, new)
-                piece_of = dict(zip(unique, s.split(sep)))
-                return list(map(ord, "".join(map(piece_of.__getitem__, text_chunks))))
+                misses = [ch for ch in unique if ch not in piece_ids]
+                if misses:
+                    s = sep.join([ch.encode("utf-8").decode("latin-1") for ch in misses])
+                    for pair, new, _ in steps:
+                        s = s.replace(pair, new)
+                    for chunk, piece in zip(misses, s.split(sep)):
+                        piece_ids[chunk] = list(map(ord, piece))
+                ids = []
+                extend = ids.extend
+                for chunk in text_chunks:
+                    extend(piece_ids[chunk])
+                return ids
         # all chunks of text are encoded separately, then results are joined
         ids = []
         merge_map = build_merge_map(self.merges)
