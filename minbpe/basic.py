@@ -17,7 +17,7 @@ except ImportError:
     from heapq import heapify, heappop, heappush, heapreplace
 from operator import itemgetter
 
-from .base import Tokenizer, get_stats, merge, build_merge_map, ordered_merge_steps
+from .base import Tokenizer, get_stats, merge, build_merge_map, ordered_merge_steps, BYTE_VOCAB
 
 try:
     # the C counting loop behind collections.Counter; importing it directly
@@ -28,6 +28,9 @@ except ImportError:
         get = mapping.get
         for elem in iterable:
             mapping[elem] = get(elem, 0) + 1
+
+
+_BIG_ENDIAN = memoryview(b"\x00\x01").cast("H")[0] == 1
 
 
 def _count(iterable):
@@ -55,10 +58,17 @@ class BasicTokenizer(Tokenizer):
 
         # iteratively merge the most common pairs to create new tokens
         merges = {} # (int, int) -> int
-        vocab = {idx: bytes([idx]) for idx in range(256)} # int -> bytes
+        vocab = dict(BYTE_VOCAB) # int -> bytes
         # count up the number of times every consecutive pair appears, keyed by
         # the two-character string; kept up to date incrementally after each merge
-        stats = _count(map(str.__add__, ids, ids[1:]))
+        # (the bytes are first read as 16-bit words at even and odd offsets, so
+        # each pair is counted as a small int and only distinct pairs become str)
+        words = {}
+        for k in (0, 1):
+            w = text_bytes[k:]
+            _count_elements(words, memoryview(w[:len(w) & ~1]).cast("H"))
+        lo, hi = (8, 0) if _BIG_ENDIAN else (0, 8)
+        stats = {chr(w >> lo & 255) + chr(w >> hi & 255): n for w, n in words.items()}
         # lazy max-heap of (-count, pair); entries whose count no longer
         # matches stats are stale and dropped when they reach the top
         heap = [(-n, p) for p, n in stats.items()]
