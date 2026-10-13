@@ -143,7 +143,6 @@ class RegexTokenizer(Tokenizer):
             merge_lookup = self._get_merge_lookup()
         while len(ids) >= 2:
             # find the pair with the lowest merge index
-            best_pair = None
             best_idx = None
             it = iter(ids)
             prev = next(it)
@@ -152,12 +151,28 @@ class RegexTokenizer(Tokenizer):
                 if nexts is not None:
                     idx = nexts.get(curr)
                     if idx is not None and (best_idx is None or idx < best_idx):
-                        best_pair = (prev, curr)
+                        best_p0 = prev
+                        best_p1 = curr
                         best_idx = idx
                 prev = curr
-            if best_pair is None:
+            if best_idx is None:
                 break # nothing else can be merged anymore
-            ids = merge(ids, best_pair, best_idx)
+            newids = []
+            append = newids.append
+            i = 0
+            n = len(ids)
+            last = n - 1
+            while i < last:
+                # if the pair matches, replace it
+                if ids[i] == best_p0 and ids[i+1] == best_p1:
+                    append(best_idx)
+                    i += 2
+                else:
+                    append(ids[i])
+                    i += 1
+            if i == last:
+                append(ids[i])
+            ids = newids
         return ids
 
     def encode_ordinary(self, text):
