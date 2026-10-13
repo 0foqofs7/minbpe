@@ -17,9 +17,10 @@ def _merge_if_present(ids, pair, idx):
     newids = None
     i = 0
     n = len(ids)
+    last = n - 1
     p0, p1 = pair
-    while i < n:
-        if ids[i] == p0 and i < n - 1 and ids[i+1] == p1:
+    while i < last:
+        if ids[i] == p0 and ids[i+1] == p1:
             if newids is None:
                 newids = ids[:i]
                 append = newids.append
@@ -29,6 +30,8 @@ def _merge_if_present(ids, pair, idx):
             if newids is not None:
                 append(ids[i])
             i += 1
+    if i == last and newids is not None:
+        append(ids[i])
     return ids if newids is None else newids
 
 

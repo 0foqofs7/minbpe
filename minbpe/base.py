@@ -39,15 +39,18 @@ def merge(ids, pair, idx):
     append = newids.append
     i = 0
     n = len(ids)
+    last = n - 1
     p0, p1 = pair
-    while i < n:
-        # if not at the very last position AND the pair matches, replace it
-        if ids[i] == p0 and i < n - 1 and ids[i+1] == p1:
+    while i < last:
+        # if the pair matches, replace it
+        if ids[i] == p0 and ids[i+1] == p1:
             append(idx)
             i += 2
         else:
             append(ids[i])
             i += 1
+    if i == last:
+        append(ids[i])
     return newids
 
 # first two helper functions...
