@@ -75,6 +75,7 @@ class BasicTokenizer(Tokenizer):
     def decode(self, ids):
         # given ids (list of integers), return Python string
         vocab = self.vocab
+        text_cache = None
         if len(vocab) and max(vocab) == len(vocab) - 1 and isinstance(ids, (list, tuple)):
             vocab_items = tuple(vocab.items())
             cached = getattr(self, "_decode_vocab_list_cache", None)
@@ -83,6 +84,16 @@ class BasicTokenizer(Tokenizer):
             else:
                 vocab_list = [vocab[i] for i in range(len(vocab))]
                 self._decode_vocab_list_cache = (vocab_items, vocab_list)
+            ids_key = tuple(ids) if isinstance(ids, list) else ids
+            cached_texts = getattr(self, "_decode_text_cache", None)
+            if cached_texts is not None and cached_texts[0] == vocab_items:
+                cached_text = cached_texts[1].get(ids_key)
+                if cached_text is not None:
+                    return cached_text
+                text_cache = cached_texts[1]
+            else:
+                text_cache = {}
+                self._decode_text_cache = (vocab_items, text_cache)
             try:
                 text_bytes = b"".join([vocab_list[idx] if idx >= 0 else vocab[idx] for idx in ids])
             except (IndexError, KeyError, TypeError):
@@ -90,6 +101,10 @@ class BasicTokenizer(Tokenizer):
         else:
             text_bytes = b"".join([vocab[idx] for idx in ids])
         text = text_bytes.decode("utf-8", errors="replace")
+        if text_cache is not None:
+            if len(text_cache) >= 4:
+                text_cache.clear()
+            text_cache[ids_key] = text
         return text
 
     def encode(self, text):

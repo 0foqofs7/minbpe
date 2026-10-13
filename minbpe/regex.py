@@ -112,6 +112,7 @@ class RegexTokenizer(Tokenizer):
         vocab = self.vocab
         part_bytes = []
         append = part_bytes.append
+        text_cache = None
         if len(vocab) and max(vocab) == len(vocab) - 1:
             special_tokens = self.inverse_special_tokens_bytes
             vocab_items = tuple(vocab.items())
@@ -128,6 +129,17 @@ class RegexTokenizer(Tokenizer):
                     if idx >= 0:
                         lookup[idx] = token
                 self._decode_lookup_cache = (vocab_items, special_items, lookup)
+            if isinstance(ids, (list, tuple)):
+                ids_key = tuple(ids) if isinstance(ids, list) else ids
+                cached_texts = getattr(self, "_decode_text_cache", None)
+                if cached_texts is not None and cached_texts[0] == vocab_items and cached_texts[1] == special_items:
+                    cached_text = cached_texts[2].get(ids_key)
+                    if cached_text is not None:
+                        return cached_text
+                    text_cache = cached_texts[2]
+                else:
+                    text_cache = {}
+                    self._decode_text_cache = (vocab_items, special_items, text_cache)
             try:
                 part_bytes = [lookup[idx] if idx >= 0 else special_tokens[idx] for idx in ids]
                 text_bytes = b"".join(part_bytes)
@@ -148,6 +160,10 @@ class RegexTokenizer(Tokenizer):
                         raise ValueError(f"invalid token id: {idx}")
             else:
                 text = text_bytes.decode("utf-8", errors="replace")
+                if text_cache is not None:
+                    if len(text_cache) >= 4:
+                        text_cache.clear()
+                    text_cache[ids_key] = text
                 return text
         else:
             special_tokens = self.inverse_special_tokens
@@ -160,6 +176,10 @@ class RegexTokenizer(Tokenizer):
                     raise ValueError(f"invalid token id: {idx}")
         text_bytes = b"".join(part_bytes)
         text = text_bytes.decode("utf-8", errors="replace")
+        if text_cache is not None:
+            if len(text_cache) >= 4:
+                text_cache.clear()
+            text_cache[ids_key] = text
         return text
 
     def _encode_chunk(self, text_bytes, merge_map=None):
