@@ -44,24 +44,38 @@ class BasicTokenizer(Tokenizer):
         get = stats.get
         last_char = itemgetter(-1)
         first_char = itemgetter(0)
+        # tied pairs not picked by the previous merge, set aside off the heap
+        # together with the count they had then (ptop)
+        pending = ()
+        ptop = 0
         for i in range(num_merges):
             # find the pair with the highest count; ties go to the pair that
             # occurs first in ids
+            if pending:
+                # a pending pair whose count changed was already pushed again
+                pending = [p for p in pending if get(p) == ptop]
             while heap and get(heap[0][1]) != -heap[0][0]:
                 heappop(heap)
-            if not heap:
-                raise IndexError("list index out of range")
-            negtop = heap[0][0]
-            top = -negtop
-            cands = set()
+            if (heap and -heap[0][0] > ptop) or not pending:
+                if not heap:
+                    raise IndexError("list index out of range")
+                for p in pending:
+                    heappush(heap, (-ptop, p))
+                negtop = heap[0][0]
+                top = -negtop
+                cands = set()
+            else:
+                top = ptop
+                negtop = -top
+                cands = set(pending)
             while heap and heap[0][0] == negtop:
                 p = heappop(heap)[1]
                 if get(p) == top:
                     cands.add(p)
-            cpair = min(cands, key=ids.find) if len(cands) > 1 else cands.pop()
-            for p in cands:
-                if p != cpair:
-                    heappush(heap, (negtop, p))
+            cpair = min(cands, key=ids.find) if len(cands) > 1 else next(iter(cands))
+            cands.discard(cpair)
+            pending = cands
+            ptop = top
             pair = (ord(cpair[0]), ord(cpair[1]))
             # mint a new token: assign it the next available id
             idx = 256 + i
