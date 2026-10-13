@@ -9,7 +9,7 @@ But:
 - Does not handle any special tokens.
 """
 
-from .base import Tokenizer, get_stats, merge
+from .base import Tokenizer, get_stats, merge, build_merge_lookup
 
 
 class BasicTokenizer(Tokenizer):
@@ -58,7 +58,7 @@ class BasicTokenizer(Tokenizer):
         # given a string text, return the token ids
         text_bytes = text.encode("utf-8") # raw bytes
         ids = list(text_bytes) # list of integers in range 0..255
-        merges = self.merges
+        merge_lookup = build_merge_lookup(self.merges)
         while len(ids) >= 2:
             # find the pair with the lowest merge index
             best_pair = None
@@ -66,10 +66,12 @@ class BasicTokenizer(Tokenizer):
             it = iter(ids)
             prev = next(it)
             for curr in it:
-                idx = merges.get((prev, curr))
-                if idx is not None and (best_idx is None or idx < best_idx):
-                    best_pair = (prev, curr)
-                    best_idx = idx
+                nexts = merge_lookup.get(prev)
+                if nexts is not None:
+                    idx = nexts.get(curr)
+                    if idx is not None and (best_idx is None or idx < best_idx):
+                        best_pair = (prev, curr)
+                        best_idx = idx
                 prev = curr
             if best_pair is None:
                 break # nothing else can be merged anymore

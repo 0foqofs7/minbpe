@@ -53,6 +53,17 @@ def merge(ids, pair, idx):
         append(ids[i])
     return newids
 
+
+def build_merge_lookup(merges):
+    lookup = {}
+    for (p0, p1), idx in merges.items():
+        nexts = lookup.get(p0)
+        if nexts is None:
+            lookup[p0] = {p1: idx}
+        else:
+            nexts[p1] = idx
+    return lookup
+
 # first two helper functions...
 def replace_control_characters(s: str) -> str:
     # we don't want to print control characters

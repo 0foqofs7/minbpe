@@ -10,7 +10,7 @@ Unlike BasicTokenizer:
 """
 
 import regex as re
-from .base import Tokenizer, get_stats, merge
+from .base import Tokenizer, get_stats, merge, build_merge_lookup
 
 
 def _merge_if_present(ids, pair, idx):
@@ -111,11 +111,12 @@ class RegexTokenizer(Tokenizer):
         text = text_bytes.decode("utf-8", errors="replace")
         return text
 
-    def _encode_chunk(self, text_bytes):
+    def _encode_chunk(self, text_bytes, merge_lookup=None):
         # return the token ids
         # let's begin. first, convert all bytes to integers in range 0..255
         ids = list(text_bytes)
-        merges = self.merges
+        if merge_lookup is None:
+            merge_lookup = build_merge_lookup(self.merges)
         while len(ids) >= 2:
             # find the pair with the lowest merge index
             best_pair = None
@@ -123,10 +124,12 @@ class RegexTokenizer(Tokenizer):
             it = iter(ids)
             prev = next(it)
             for curr in it:
-                idx = merges.get((prev, curr))
-                if idx is not None and (best_idx is None or idx < best_idx):
-                    best_pair = (prev, curr)
-                    best_idx = idx
+                nexts = merge_lookup.get(prev)
+                if nexts is not None:
+                    idx = nexts.get(curr)
+                    if idx is not None and (best_idx is None or idx < best_idx):
+                        best_pair = (prev, curr)
+                        best_idx = idx
                 prev = curr
             if best_pair is None:
                 break # nothing else can be merged anymore
@@ -139,9 +142,10 @@ class RegexTokenizer(Tokenizer):
         text_chunks = re.findall(self.compiled_pattern, text)
         # all chunks of text are encoded separately, then results are joined
         ids = []
+        merge_lookup = build_merge_lookup(self.merges)
         for chunk in text_chunks:
             chunk_bytes = chunk.encode("utf-8") # raw bytes
-            chunk_ids = self._encode_chunk(chunk_bytes)
+            chunk_ids = self._encode_chunk(chunk_bytes, merge_lookup)
             ids.extend(chunk_ids)
         return ids
 
