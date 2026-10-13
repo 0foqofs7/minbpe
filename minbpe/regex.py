@@ -100,6 +100,7 @@ class RegexTokenizer(Tokenizer):
         pushed = dict(stats)
         heappush = heapq.heappush
         heappop = heapq.heappop
+        heapreplace = heapq.heapreplace
         # tied pairs not chosen by the previous merge, kept off the heap
         # (each was current with count pend_top when it was set aside)
         pending = []
@@ -109,12 +110,30 @@ class RegexTokenizer(Tokenizer):
                 raise ValueError("max() arg is an empty sequence")
             # find the pair with the highest count; ties go to the pair
             # that occurs first in chunk order
-            while heap and stats.get(heap[0][1]) != -heap[0][0]:
-                heappop(heap)
+            # entries may overstate a count (decreases are not pushed);
+            # such an entry is re-pushed with the current count when reached
+            sget = stats.get
+            if pending:
+                tied = []
+                for p in pending:
+                    c = sget(p)
+                    if c == pend_top:
+                        tied.append(p)
+                    elif c is not None and pushed[p] == pend_top:
+                        pushed[p] = c
+                        heappush(heap, (-c, p))
+            while heap:
+                k, p = heap[0]
+                c = sget(p)
+                if c == -k:
+                    break
+                if c is not None and pushed[p] == -k:
+                    pushed[p] = c
+                    heapreplace(heap, (-c, p))
+                else:
+                    heappop(heap)
             top = -heap[0][0] if heap else 0
             if pending:
-                sget = stats.get
-                tied = [p for p in pending if sget(p) == pend_top]
                 if tied and pend_top >= top:
                     top = pend_top
                 else:
@@ -126,14 +145,23 @@ class RegexTokenizer(Tokenizer):
             seen = set(tied)
             while heap and heap[0][0] == -top:
                 p = heappop(heap)[1]
-                if p not in seen and stats.get(p) == top:
-                    seen.add(p)
-                    tied.append(p)
+                c = sget(p)
+                if c == top:
+                    if p not in seen:
+                        seen.add(p)
+                        tied.append(p)
+                elif c is not None and pushed[p] == top:
+                    pushed[p] = c
+                    heappush(heap, (-c, p))
             if len(tied) == 1:
                 cpair = tied[0]
                 pending = []
             else:
-                first = min(j for p in tied for j in where[p] if p in ids[j])
+                first = len(ids)
+                for p in tied:
+                    for j in where[p]:
+                        if j < first and p in ids[j]:
+                            first = j
                 chunk_ids = ids[first]
                 cpair = next(p for p in map(str.__add__, chunk_ids, chunk_ids[1:]) if p in seen)
                 tied.remove(cpair)
@@ -220,13 +248,14 @@ class RegexTokenizer(Tokenizer):
             del stats[cpair]
             pushed.pop(cpair, None)
             delta.pop(cpair, None)
-            # apply the deltas; push only pairs whose count differs from
+            # apply the deltas; push only pairs whose count rose above
             # their latest entry
+            pget = pushed.get
             for p, d in delta.items():
-                c = stats.get(p, 0) + d
+                c = sget(p, 0) + d
                 if c:
                     stats[p] = c
-                    if c != pushed.get(p):
+                    if c > pget(p, 0):
                         pushed[p] = c
                         heappush(heap, (-c, p))
                 elif p in stats:
