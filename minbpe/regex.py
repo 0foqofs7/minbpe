@@ -80,29 +80,69 @@ class RegexTokenizer(Tokenizer):
         # iteratively merge the most common pairs to create new tokens
         merges = {} # (int, int) -> int
         vocab = {idx: bytes([idx]) for idx in range(256)} # idx -> bytes
+        # count the number of times every consecutive pair appears, once;
+        # where maps each pair to the indices of the chunks containing it
+        stats = {}
+        where = {}
+        for j, (chunk_ids, w) in enumerate(zip(ids, weights)):
+            for cpair in zip(chunk_ids, chunk_ids[1:]):
+                stats[cpair] = stats.get(cpair, 0) + w
+                if cpair in where:
+                    where[cpair].add(j)
+                else:
+                    where[cpair] = {j}
         for i in range(num_merges):
-            # count the number of times every consecutive pair appears
-            stats = {}
-            for chunk_ids, w in zip(ids, weights):
-                # count pairs in this chunk, adding up counts across chunks
-                for cpair in zip(chunk_ids, chunk_ids[1:]):
-                    stats[cpair] = stats.get(cpair, 0) + w
-            # find the pair with the highest count
-            cpair = max(stats, key=stats.get)
+            if not stats:
+                raise ValueError("max() arg is an empty sequence")
+            # find the pair with the highest count; ties go to the pair
+            # that occurs first in chunk order
+            top = max(stats.values())
+            tied = [p for p, c in stats.items() if c == top]
+            if len(tied) == 1:
+                cpair = tied[0]
+            else:
+                first = min(min(where[p]) for p in tied)
+                tied = set(tied)
+                chunk_ids = ids[first]
+                cpair = next(p for p in zip(chunk_ids, chunk_ids[1:]) if p in tied)
             pair = (ord(cpair[0]), ord(cpair[1]))
             # mint a new token: assign it the next available id
             idx = 256 + i
-            # replace all occurrences of pair in ids with idx
-            # (str.replace is left to right and non-overlapping)
+            # replace all occurrences of pair in the affected chunks with idx
+            # (str.replace is left to right and non-overlapping),
+            # updating the pair counts of those chunks only
             old = cpair[0] + cpair[1]
             new = chr(idx)
-            ids = [chunk_ids.replace(old, new) for chunk_ids in ids]
+            for j in sorted(where[cpair]):
+                chunk_ids = ids[j]
+                w = weights[j]
+                new_ids = chunk_ids.replace(old, new)
+                ids[j] = new_ids
+                for p in zip(chunk_ids, chunk_ids[1:]):
+                    stats[p] -= w
+                for p in zip(new_ids, new_ids[1:]):
+                    if p in stats:
+                        stats[p] += w
+                    else:
+                        stats[p] = w
+                old_pairs = set(zip(chunk_ids, chunk_ids[1:]))
+                new_pairs = set(zip(new_ids, new_ids[1:]))
+                for p in old_pairs - new_pairs:
+                    where[p].discard(j)
+                    if not stats[p]:
+                        del stats[p]
+                        del where[p]
+                for p in new_pairs - old_pairs:
+                    if p in where:
+                        where[p].add(j)
+                    else:
+                        where[p] = {j}
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
             # prints
             if verbose:
-                print(f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {stats[cpair]} occurrences")
+                print(f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {top} occurrences")
 
         # save class variables
         self.merges = merges # used in encode()
