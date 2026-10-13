@@ -87,25 +87,30 @@ class RegexTokenizer(Tokenizer):
             best = -negc
             # take every current entry tied at the top count off the heap
             tied = []
+            tied_seen = set()
             while heap and heap[0][0] == negc:
                 p = heappop(heap)[1]
-                if stats_get(p) == best and p not in tied:
+                if stats_get(p) == best and p not in tied_seen:
                     tied.append(p)
+                    tied_seen.add(p)
             if len(tied) == 1:
                 cpair = tied[0]
             else:
-                for p in tied:
-                    heappush(heap, (negc, p))
                 # only the earliest chunk holding a tied pair needs scanning
                 # (where may also list chunks that no longer hold the pair)
-                cands = set().union(*[where[p] for p in tied])
-                tied = set(tied)
+                cands = set()
+                for p in tied:
+                    cands.update(where[p])
+                tied_set = set(tied)
                 cpair = None
                 while cpair is None:
                     ci = min(cands)
                     cands.discard(ci)
                     chunk_ids = ids[ci]
-                    cpair = next((p for p in zip(chunk_ids, chunk_ids[1:]) if p in tied), None)
+                    cpair = next((p for p in zip(chunk_ids, chunk_ids[1:]) if p in tied_set), None)
+                for p in tied:
+                    if p != cpair:
+                        heappush(heap, (negc, p))
             # mint a new token: assign it the next available id
             idx = 256 + i
             # replace all occurrences of pair in ids with idx

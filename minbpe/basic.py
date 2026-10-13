@@ -10,14 +10,10 @@ But:
 """
 
 from collections import Counter
-from itertools import islice
+from heapq import heapify, heappop, heappush
 from operator import itemgetter
 
 from .base import Tokenizer, get_stats, merge, build_merge_lookup
-
-# last and first token of a part ("" for an empty part)
-_last = itemgetter(slice(-1, None))
-_first = itemgetter(slice(None, 1))
 
 
 class BasicTokenizer(Tokenizer):
@@ -43,16 +39,33 @@ class BasicTokenizer(Tokenizer):
         # counts are then updated around the occurrences each merge replaces
         stats = dict(Counter(zip(ids, ids[1:])))
         stats_get = stats.get
+        heap = [(-c, p) for p, c in stats.items()]
+        heapify(heap)
         for i in range(num_merges):
             # find the pair with the highest count; ties go to the pair that
             # occurs first in ids, as with a freshly counted stats dict
-            vals = list(stats.values())
-            best = max(vals)
-            if vals.count(best) == 1:
-                cpair = next(islice(stats, vals.index(best), None))
+            if not stats:
+                max(stats.values()) # nothing left to merge: raise as before
+            while True:
+                negc, p = heap[0]
+                if stats_get(p) == -negc:
+                    break
+                heappop(heap)
+            best = -negc
+            tied = []
+            tied_seen = set()
+            while heap and heap[0][0] == negc:
+                p = heappop(heap)[1]
+                if stats_get(p) == best and p not in tied_seen:
+                    tied.append(p)
+                    tied_seen.add(p)
+            if len(tied) == 1:
+                cpair = tied[0]
             else:
-                tied = [p for p, c in stats.items() if c == best]
                 cpair = min(tied, key=lambda p: ids.find(p[0] + p[1]))
+                for p in tied:
+                    if p != cpair:
+                        heappush(heap, (negc, p))
             pair = (ord(cpair[0]), ord(cpair[1]))
             # mint a new token: assign it the next available id
             idx = 256 + i
@@ -64,12 +77,24 @@ class BasicTokenizer(Tokenizer):
             parts = ids.split(a + b)
             # the token before each occurrence is the last one of the part
             # before it; an empty part between two occurrences means it is b
-            left = Counter(map(_last, parts[:-1]))
-            both = left.pop("", 0) - (not parts[0])
+            left = {}
+            empty_left = 0
+            left_get = left.get
+            for part in parts[:-1]:
+                if part:
+                    c = part[-1]
+                    left[c] = left_get(c, 0) + 1
+                else:
+                    empty_left += 1
+            both = empty_left - (not parts[0])
             # the token after each occurrence is the first one of the part
             # after it (an empty part is counted on the left of the next one)
-            right = Counter(map(_first, parts[1:]))
-            right.pop("", None)
+            right = {}
+            right_get = right.get
+            for part in parts[1:]:
+                if part:
+                    c = part[0]
+                    right[c] = right_get(c, 0) + 1
             removed = [((c, a), n) for c, n in left.items()]
             removed += [((b, c), n) for c, n in right.items()]
             if both:
@@ -78,17 +103,25 @@ class BasicTokenizer(Tokenizer):
                 c = stats[p] - n
                 if c:
                     stats[p] = c
+                    if p != cpair:
+                        heappush(heap, (-c, p))
                 else:
                     del stats[p]
             # no occurrence of the merged pair is left
             del stats[cpair]
             # pairs with the new token did not exist before
             for c, n in left.items():
-                stats[(c, new)] = n
+                p = (c, new)
+                stats[p] = n
+                heappush(heap, (-n, p))
             for c, n in right.items():
-                stats[(new, c)] = n
+                p = (new, c)
+                stats[p] = n
+                heappush(heap, (-n, p))
             if both:
-                stats[(new, new)] = both
+                p = (new, new)
+                stats[p] = both
+                heappush(heap, (-both, p))
             ids = new.join(parts)
             # save the merge
             merges[pair] = idx
