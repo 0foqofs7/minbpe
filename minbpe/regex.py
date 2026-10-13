@@ -10,7 +10,7 @@ Unlike BasicTokenizer:
 """
 
 import regex as re
-from .base import Tokenizer, get_stats, merge, build_merge_map
+from .base import Tokenizer, get_stats, build_merge_map
 
 
 # the main GPT text split patterns, see
@@ -43,6 +43,7 @@ class RegexTokenizer(Tokenizer):
 
         # input text preprocessing
         ids = [list(ch.encode("utf-8")) for ch in text_chunks]
+        ids = [chunk_ids for chunk_ids in ids if len(chunk_ids) > 1]
 
         # iteratively merge the most common pairs to create new tokens
         merges = {} # (int, int) -> int
@@ -60,7 +61,23 @@ class RegexTokenizer(Tokenizer):
             # mint a new token: assign it the next available id
             idx = 256 + i
             # replace all occurrences of pair in ids with idx
-            ids = [merge(chunk_ids, pair, idx) for chunk_ids in ids]
+            new_ids = []
+            p0, p1 = pair
+            for chunk_ids in ids:
+                new_chunk_ids = []
+                append = new_chunk_ids.append
+                j = 0
+                n = len(chunk_ids)
+                while j < n:
+                    if chunk_ids[j] == p0 and j < n - 1 and chunk_ids[j+1] == p1:
+                        append(idx)
+                        j += 2
+                    else:
+                        append(chunk_ids[j])
+                        j += 1
+                if len(new_chunk_ids) > 1:
+                    new_ids.append(new_chunk_ids)
+            ids = new_ids
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
