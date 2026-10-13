@@ -124,6 +124,26 @@ class BasicTokenizer(Tokenizer):
     def encode(self, text):
         # given a string text, return the token ids
         text_bytes = text.encode("utf-8") # raw bytes
+        # when every merge creates a token id larger than both of its children
+        # (and ids are distinct), the lowest-index pair present is always the
+        # next merge in index order, so the merges can be applied in that order
+        # on a str holding one character per token id
+        ordered = sorted(self.merges.items(), key=lambda item: item[1])
+        prev = -1
+        for (p0, p1), idx in ordered:
+            if not (type(p0) is int and type(p1) is int and type(idx) is int
+                    and 0 <= p0 < idx and 0 <= p1 < idx and prev < idx < 0x110000):
+                break
+            prev = idx
+        else:
+            s = text_bytes.decode("latin-1")
+            for (p0, p1), idx in ordered:
+                if len(s) < 2:
+                    break
+                pair = chr(p0) + chr(p1)
+                if pair in s:
+                    s = s.replace(pair, chr(idx))
+            return [ord(c) for c in s]
         ids = list(text_bytes) # list of integers in range 0..255
         merge_map = build_merge_map(self.merges)
         while len(ids) >= 2:
