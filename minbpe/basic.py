@@ -10,6 +10,7 @@ But:
 """
 
 from collections import Counter
+from itertools import pairwise
 
 from .base import Tokenizer, get_stats, merge, build_merge_map
 
@@ -32,7 +33,7 @@ class BasicTokenizer(Tokenizer):
         vocab = {idx: bytes([idx]) for idx in range(256)} # int -> bytes
         for i in range(num_merges):
             # count up the number of times every consecutive pair appears
-            stats = Counter(zip(ids, ids[1:]))
+            stats = Counter(pairwise(ids))
             # find the pair with the highest count
             pair = stats.most_common(1)[0][0]
             # mint a new token: assign it the next available id
