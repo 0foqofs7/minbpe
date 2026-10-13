@@ -22,6 +22,7 @@ _VOCAB_LINE_CACHE = {}
 _VOCAB_LINE_CACHE_MAX = 8192
 _VOCAB_BYTES_PREFIX_CACHE = None
 _MODEL_BYTES_PREFIX_CACHE = None
+_BUILD_VOCAB_PREFIX_CACHE = None
 
 def get_stats(ids, counts=None):
     """
@@ -177,9 +178,24 @@ class Tokenizer:
 
     def _build_vocab(self):
         # vocab is simply and deterministically derived from merges
-        vocab = BYTE_VOCAB.copy()
-        for (p0, p1), idx in self.merges.items():
+        global _BUILD_VOCAB_PREFIX_CACHE
+        merge_items = tuple(self.merges.items())
+        cached = _BUILD_VOCAB_PREFIX_CACHE
+        start = 0
+        if cached is not None:
+            cached_items, cached_vocab = cached
+            n = len(cached_items)
+            if n <= len(merge_items) and merge_items[:n] == cached_items:
+                vocab = cached_vocab.copy()
+                start = n
+            else:
+                vocab = BYTE_VOCAB.copy()
+        else:
+            vocab = BYTE_VOCAB.copy()
+        for (p0, p1), idx in merge_items[start:]:
             vocab[idx] = vocab[p0] + vocab[p1]
+        if merge_items:
+            _BUILD_VOCAB_PREFIX_CACHE = (merge_items, vocab.copy())
         for special, idx in self.special_tokens.items():
             vocab[idx] = special.encode("utf-8")
         return vocab
