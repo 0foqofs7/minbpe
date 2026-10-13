@@ -65,13 +65,21 @@ def replace_control_characters(s: str) -> str:
     # which distort the output (e.g. \n or much worse)
     # https://stackoverflow.com/questions/4324790/removing-control-characters-from-a-string-in-python/19016117#19016117
     # http://www.unicode.org/reports/tr44/#GC_Values_Table
-    chars = []
-    for ch in s:
+    return s.translate(_CONTROL_ESCAPES)
+
+
+class _ControlEscapes(dict):
+    # code point -> the character itself if ok, else its \uXXXX escape
+    def __missing__(self, o):
+        ch = chr(o)
         if unicodedata.category(ch)[0] != "C":
-            chars.append(ch) # this character is ok
+            s = ch # this character is ok
         else:
-            chars.append(f"\\u{ord(ch):04x}") # escape
-    return "".join(chars)
+            s = f"\\u{o:04x}" # escape
+        self[o] = s
+        return s
+
+_CONTROL_ESCAPES = _ControlEscapes()
 
 def render_token(t: bytes) -> str:
     # pretty print a token, escaping control characters
