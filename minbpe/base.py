@@ -165,9 +165,11 @@ class Tokenizer:
             prefix_merge_len = 0
             prefix_text = ""
             prefix_bytes = b""
+            prefix_load_merges = None
+            prefix_load_vocab = None
             cached_prefix = _MODEL_BYTES_PREFIX_CACHE
             if cached_prefix is not None:
-                cached_pattern, cached_special_items, cached_merge_keys, cached_text, cached_bytes = cached_prefix
+                cached_pattern, cached_special_items, cached_merge_keys, cached_text, cached_bytes, cached_load_merges, cached_load_vocab = cached_prefix
                 if (cached_pattern == self.pattern
                         and cached_special_items == special_items
                         and len(cached_merge_keys) < len(merge_keys)
@@ -175,6 +177,8 @@ class Tokenizer:
                     prefix_merge_len = len(cached_merge_keys)
                     prefix_text = cached_text
                     prefix_bytes = cached_bytes
+                    prefix_load_merges = cached_load_merges
+                    prefix_load_vocab = cached_load_vocab
             lines = []
             append = lines.append
             if prefix_merge_len == 0:
@@ -183,20 +187,25 @@ class Tokenizer:
                 append(f"{len(special_items)}\n")
                 for special, idx in special_items:
                     append(f"{special} {idx}\n")
+                load_merges = {}
+                load_vocab = BYTE_VOCAB.copy()
+            else:
+                load_merges = prefix_load_merges.copy()
+                load_vocab = prefix_load_vocab.copy()
             # the merges dict
+            idx = 256 + prefix_merge_len
             for pair in merge_keys[prefix_merge_len:]:
                 append(render_merge_line(pair))
+                load_merges[pair] = idx
+                load_vocab[idx] = load_vocab[pair[0]] + load_vocab[pair[1]]
+                idx += 1
             suffix_text = "".join(lines)
             model_text = prefix_text + suffix_text
             model_bytes = prefix_bytes + suffix_text.encode("utf-8")
-            _MODEL_BYTES_PREFIX_CACHE = (self.pattern, special_items, merge_keys, model_text, model_bytes)
-            load_merges = {pair: 256 + i for i, pair in enumerate(merge_keys)}
             load_special_tokens = dict(special_items)
-            load_vocab = BYTE_VOCAB.copy()
-            for (p0, p1), idx in load_merges.items():
-                load_vocab[idx] = load_vocab[p0] + load_vocab[p1]
             for special, idx in load_special_tokens.items():
                 load_vocab[idx] = special.encode("utf-8")
+            _MODEL_BYTES_PREFIX_CACHE = (self.pattern, special_items, merge_keys, model_text, model_bytes, load_merges, load_vocab)
             if len(_LOAD_CACHE) >= _LOAD_CACHE_MAX:
                 _LOAD_CACHE.clear()
             _LOAD_CACHE[(type(self), model_text)] = (self.pattern, load_merges, load_special_tokens, load_vocab)
