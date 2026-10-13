@@ -105,6 +105,13 @@ class RegexTokenizer(Tokenizer):
         # (each was current with count pend_top when it was set aside)
         pending = []
         pend_top = 0
+
+        def drop(p):
+            # a pair whose count fell to zero leaves every index
+            del stats[p]
+            del where[p]
+            pushed.pop(p, None)
+
         for i in range(num_merges):
             if not stats:
                 raise ValueError("max() arg is an empty sequence")
@@ -181,8 +188,12 @@ class RegexTokenizer(Tokenizer):
             o1 = old[1]
             oo = o1 + o0
             nn = new + new
-            delta = {}
-            dget = delta.get
+            # pairs losing counts never contain the new token, so they are
+            # updated in place (counts stay exact, so the merged pair itself
+            # never reaches zero here); pairs gaining counts always contain
+            # it, so they are new and collected in inc
+            inc = {}
+            iget = inc.get
             # where may hold stale chunk indices (chunks that no longer
             # contain the pair); splitting those yields a single part
             for j in where.pop(cpair):
@@ -198,16 +209,24 @@ class RegexTokenizer(Tokenizer):
                     if L:
                         c = L[-1]
                         p = c + o0
-                        delta[p] = dget(p, 0) - w
+                        k = sget(p) - w
+                        if k:
+                            stats[p] = k
+                        else:
+                            drop(p)
                         p = c + new
-                        delta[p] = dget(p, 0) + w
+                        inc[p] = iget(p, 0) + w
                         where[p].append(j)
                     if R:
                         c = R[0]
                         p = o1 + c
-                        delta[p] = dget(p, 0) - w
+                        k = sget(p) - w
+                        if k:
+                            stats[p] = k
+                        else:
+                            drop(p)
                         p = new + c
-                        delta[p] = dget(p, 0) + w
+                        inc[p] = iget(p, 0) + w
                         where[p].append(j)
                     continue
                 ids[j] = new.join(parts)
@@ -215,53 +234,63 @@ class RegexTokenizer(Tokenizer):
                 if L:
                     c = L[-1]
                     p = c + o0
-                    delta[p] = dget(p, 0) - w
+                    k = sget(p) - w
+                    if k:
+                        stats[p] = k
+                    else:
+                        drop(p)
                     p = c + new
-                    delta[p] = dget(p, 0) + w
+                    inc[p] = iget(p, 0) + w
                     where[p].append(j)
                 for R in parts[1:-1]:
                     if R:
                         c = R[0]
                         p = o1 + c
-                        delta[p] = dget(p, 0) - w
+                        k = sget(p) - w
+                        if k:
+                            stats[p] = k
+                        else:
+                            drop(p)
                         p = new + c
-                        delta[p] = dget(p, 0) + w
+                        inc[p] = iget(p, 0) + w
                         where[p].append(j)
                         c = R[-1]
                         p = c + o0
-                        delta[p] = dget(p, 0) - w
+                        k = sget(p) - w
+                        if k:
+                            stats[p] = k
+                        else:
+                            drop(p)
                         p = c + new
-                        delta[p] = dget(p, 0) + w
+                        inc[p] = iget(p, 0) + w
                         where[p].append(j)
                     else:
-                        delta[oo] = dget(oo, 0) - w
-                        delta[nn] = dget(nn, 0) + w
+                        k = sget(oo) - w
+                        if k:
+                            stats[oo] = k
+                        else:
+                            drop(oo)
+                        inc[nn] = iget(nn, 0) + w
                         where[nn].append(j)
                 R = parts[-1]
                 if R:
                     c = R[0]
                     p = o1 + c
-                    delta[p] = dget(p, 0) - w
+                    k = sget(p) - w
+                    if k:
+                        stats[p] = k
+                    else:
+                        drop(p)
                     p = new + c
-                    delta[p] = dget(p, 0) + w
+                    inc[p] = iget(p, 0) + w
                     where[p].append(j)
             del stats[cpair]
             pushed.pop(cpair, None)
-            delta.pop(cpair, None)
-            # apply the deltas; push only pairs whose count rose above
-            # their latest entry
-            pget = pushed.get
-            for p, d in delta.items():
-                c = sget(p, 0) + d
-                if c:
-                    stats[p] = c
-                    if c > pget(p, 0):
-                        pushed[p] = c
-                        heappush(heap, (-c, p))
-                elif p in stats:
-                    del stats[p]
-                    del where[p]
-                    pushed.pop(p, None)
+            # the new pairs have no heap entry yet
+            for p, c in inc.items():
+                stats[p] = c
+                pushed[p] = c
+                heappush(heap, (-c, p))
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
