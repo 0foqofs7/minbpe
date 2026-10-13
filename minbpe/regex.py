@@ -293,6 +293,28 @@ class RegexTokenizer(Tokenizer):
         """Encoding that ignores any special tokens."""
         # split text into chunks of text by categories defined in regex pattern
         text_chunks = re.findall(self.compiled_pattern, text)
+        if type(self)._encode_chunk is RegexTokenizer._encode_chunk:
+            # when every merge creates a token id larger than both of its children
+            # (and ids are distinct), the merges can be applied in index order with
+            # str.replace; the unique chunks are joined by a separator character
+            # above every token id, so no pair can span two chunks
+            ordered = sorted(self.merges.items(), key=lambda item: item[1])
+            prev = 255
+            for (p0, p1), idx in ordered:
+                if not (type(p0) is int and type(p1) is int and type(idx) is int
+                        and 0 <= p0 < idx and 0 <= p1 < idx and prev < idx < 0x10ffff):
+                    break
+                prev = idx
+            else:
+                sep = chr(prev + 1)
+                unique = list(dict.fromkeys(text_chunks))
+                s = sep.join([ch.encode("utf-8").decode("latin-1") for ch in unique])
+                for (p0, p1), idx in ordered:
+                    pair = chr(p0) + chr(p1)
+                    if pair in s:
+                        s = s.replace(pair, chr(idx))
+                piece_of = dict(zip(unique, s.split(sep)))
+                return list(map(ord, "".join(map(piece_of.__getitem__, text_chunks))))
         # all chunks of text are encoded separately, then results are joined
         ids = []
         merge_map = build_merge_map(self.merges)
