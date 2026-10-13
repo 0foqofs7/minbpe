@@ -126,7 +126,19 @@ class RegexTokenizer(Tokenizer):
             # if there are no more merges available, break
             if pair is None:
                 break # nothing else can be merged anymore
-            ids = merge(ids, pair, idx)
+            newids = []
+            append = newids.append
+            i = 0
+            n = len(ids)
+            p0, p1 = pair
+            while i < n:
+                if ids[i] == p0 and i < n - 1 and ids[i+1] == p1:
+                    append(idx)
+                    i += 2
+                else:
+                    append(ids[i])
+                    i += 1
+            ids = newids
         return ids
 
     def encode_ordinary(self, text):
