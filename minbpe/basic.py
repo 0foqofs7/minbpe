@@ -9,6 +9,8 @@ But:
 - Does not handle any special tokens.
 """
 
+from collections import Counter
+
 from .base import Tokenizer, get_stats, merge, build_merge_lookup
 
 
@@ -23,26 +25,31 @@ class BasicTokenizer(Tokenizer):
 
         # input text preprocessing
         text_bytes = text.encode("utf-8") # raw bytes
-        ids = list(text_bytes) # list of integers in range 0..255
+        # the ids are kept as a str with one code point per token id, so that
+        # pair counting and merging run in C (str.replace replaces
+        # non-overlapping occurrences left to right, exactly like merge())
+        ids = text_bytes.decode("latin-1")
 
         # iteratively merge the most common pairs to create new tokens
         merges = {} # (int, int) -> int
         vocab = {idx: bytes([idx]) for idx in range(256)} # int -> bytes
         for i in range(num_merges):
             # count up the number of times every consecutive pair appears
-            stats = get_stats(ids)
+            # (in first-occurrence order, as get_stats does)
+            stats = Counter(zip(ids, ids[1:]))
             # find the pair with the highest count
-            pair = max(stats, key=stats.get)
+            cpair = max(stats, key=stats.get)
+            pair = (ord(cpair[0]), ord(cpair[1]))
             # mint a new token: assign it the next available id
             idx = 256 + i
             # replace all occurrences of pair in ids with idx
-            ids = merge(ids, pair, idx)
+            ids = ids.replace(cpair[0] + cpair[1], chr(idx))
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
             # prints
             if verbose:
-                print(f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {stats[pair]} occurrences")
+                print(f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {stats[cpair]} occurrences")
 
         # save class variables
         self.merges = merges # used in encode()
