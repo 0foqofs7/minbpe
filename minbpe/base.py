@@ -95,22 +95,25 @@ def replace_control_characters(s: str) -> str:
     # which distort the output (e.g. \n or much worse)
     # https://stackoverflow.com/questions/4324790/removing-control-characters-from-a-string-in-python/19016117#19016117
     # http://www.unicode.org/reports/tr44/#GC_Values_Table
-    return s.translate(_CONTROL_ESCAPES)
+    if s.isprintable():
+        return s # no category C* (or Z*) characters at all
+    # only the distinct characters are classified; escapes are plain ascii,
+    # so replacing one control character never creates another
+    chars = set(s)
+    if not chars <= _SEEN_CHARS:
+        for ch in chars - _SEEN_CHARS:
+            # non-printable means unicode category C* or Z*; all Cc are below
+            # U+00A0, and above it the non-printable spaces are exactly Z*
+            if not ch.isprintable() and (ch < "\xa0" or not ch.isspace()):
+                _CONTROL_CHARS.add(ch)
+            _SEEN_CHARS.add(ch)
+    for ch in chars & _CONTROL_CHARS:
+        s = s.replace(ch, f"\\u{ord(ch):04x}") # escape
+    return s
 
 
-class _ControlEscapes(dict):
-    # code point -> the character itself if ok, else its \uXXXX escape
-    def __missing__(self, o):
-        import unicodedata
-        ch = chr(o)
-        if unicodedata.category(ch)[0] != "C":
-            s = ch # this character is ok
-        else:
-            s = f"\\u{o:04x}" # escape
-        self[o] = s
-        return s
-
-_CONTROL_ESCAPES = _ControlEscapes()
+_SEEN_CHARS = set()
+_CONTROL_CHARS = set()
 
 def render_token(t: bytes) -> str:
     # pretty print a token, escaping control characters
@@ -328,8 +331,11 @@ class Tokenizer:
         """Inverse of save() but only for the model file"""
         assert model_file.endswith(".model")
         # read the model file
-        with open(model_file, 'r', encoding="utf-8") as f:
-            model_text = f.read()
+        with open(model_file, 'rb') as f:
+            model_text = f.read().decode("utf-8")
+        if "\r" in model_text:
+            # same universal newline translation as text mode
+            model_text = model_text.replace("\r\n", "\n").replace("\r", "\n")
         cache_key = (type(self), model_text)
         cached = _LOAD_CACHE.get(cache_key)
         if cached is not None:
