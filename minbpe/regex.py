@@ -9,7 +9,7 @@ Unlike BasicTokenizer:
 - RegexTokenizer handles optional special tokens.
 """
 
-from .base import Tokenizer, get_stats, build_merge_map, ordered_merge_steps
+from .base import Tokenizer, get_stats, build_merge_map, ordered_merge_steps, BYTE_VOCAB
 
 
 class _LazyRegexModule:
@@ -79,7 +79,7 @@ class RegexTokenizer(Tokenizer):
 
         # iteratively merge the most common pairs to create new tokens
         merges = {} # (int, int) -> int
-        vocab = {idx: bytes([idx]) for idx in range(256)} # idx -> bytes
+        vocab = BYTE_VOCAB.copy() # idx -> bytes
         # count the number of times every consecutive pair appears, once;
         # where maps each pair to the indices of the chunks containing it
         stats = {}
@@ -115,16 +115,17 @@ class RegexTokenizer(Tokenizer):
                 if p not in seen and stats.get(p) == top:
                     seen.add(p)
                     tied.append(p)
-            for p in tied:
-                heappush(heap, (-top, p))
-            touched = set()
             if len(tied) == 1:
                 cpair = tied[0]
             else:
                 first = min(min(where[p]) for p in tied)
-                tied = set(tied)
+                tied_set = set(tied)
                 chunk_ids = ids[first]
-                cpair = next(p for p in map(str.__add__, chunk_ids, chunk_ids[1:]) if p in tied)
+                cpair = next(p for p in map(str.__add__, chunk_ids, chunk_ids[1:]) if p in tied_set)
+                for p in tied:
+                    if p != cpair:
+                        heappush(heap, (-top, p))
+            touched = set()
             pair = (ord(cpair[0]), ord(cpair[1]))
             # mint a new token: assign it the next available id
             idx = 256 + i
@@ -133,7 +134,7 @@ class RegexTokenizer(Tokenizer):
             # updating the pair counts of those chunks only
             old = cpair
             new = chr(idx)
-            for j in sorted(where[cpair]):
+            for j in tuple(where[cpair]):
                 chunk_ids = ids[j]
                 w = weights[j]
                 new_ids = chunk_ids.replace(old, new)
@@ -149,17 +150,19 @@ class RegexTokenizer(Tokenizer):
                         stats[p] = w
                 old_pairs = set(old_list)
                 new_pairs = set(new_list)
-                for p in old_pairs - new_pairs:
-                    where[p].discard(j)
-                    if not stats[p]:
-                        del stats[p]
-                        del where[p]
-                        pushed.pop(p, None)
-                for p in new_pairs - old_pairs:
-                    if p in where:
-                        where[p].add(j)
-                    else:
-                        where[p] = {j}
+                for p in old_pairs:
+                    if p not in new_pairs:
+                        where[p].discard(j)
+                        if not stats[p]:
+                            del stats[p]
+                            del where[p]
+                            pushed.pop(p, None)
+                for p in new_pairs:
+                    if p not in old_pairs:
+                        if p in where:
+                            where[p].add(j)
+                        else:
+                            where[p] = {j}
                 touched |= old_pairs
                 touched |= new_pairs
             # push only pairs whose count differs from their latest entry
