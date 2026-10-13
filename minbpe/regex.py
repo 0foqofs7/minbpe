@@ -170,19 +170,34 @@ class RegexTokenizer(Tokenizer):
         text = text_bytes.decode("utf-8", errors="replace")
         return text
 
+    def _get_merge_table(self):
+        # the merge lookup as a list indexed by the first token id (None where
+        # no merge starts with that id), so the encode scan can subscript it
+        lookup = self._get_merge_lookup()
+        if getattr(self, "_merge_table_src", None) is not lookup:
+            size = 256
+            for p0, nexts in lookup.items():
+                size = max(size, p0 + 1, max(nexts.values()) + 1)
+            table = [None] * size
+            for p0, nexts in lookup.items():
+                table[p0] = nexts
+            self._merge_table = table
+            self._merge_table_src = lookup
+        return self._merge_table
+
     def _encode_chunk(self, text_bytes, merge_lookup=None):
         # return the token ids
         # let's begin. first, convert all bytes to integers in range 0..255
         ids = list(text_bytes)
-        if merge_lookup is None:
-            merge_lookup = self._get_merge_lookup()
+        if type(merge_lookup) is not list:
+            merge_lookup = self._get_merge_table()
         while len(ids) >= 2:
             # find the pair with the lowest merge index
             best_idx = None
             it = iter(ids)
             prev = next(it)
             for curr in it:
-                nexts = merge_lookup.get(prev)
+                nexts = merge_lookup[prev]
                 if nexts is not None:
                     idx = nexts.get(curr)
                     if idx is not None:
@@ -227,7 +242,7 @@ class RegexTokenizer(Tokenizer):
         text_chunks = re.findall(self.compiled_pattern, text)
         # all chunks of text are encoded separately, then results are joined
         ids = []
-        merge_lookup = self._get_merge_lookup()
+        merge_lookup = self._get_merge_table()
         # identical chunks encode identically, so reuse results while the
         # merges are unchanged (the cache is reset whenever the lookup is)
         cache = self._chunk_cache
