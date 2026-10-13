@@ -46,10 +46,11 @@ class RegexTokenizer(Tokenizer):
         chunk_counts = {}
         for ch in text_chunks:
             chunk_counts[ch] = chunk_counts.get(ch, 0) + 1
+        # each chunk is kept as a str with one character per token id
         ids = []
         weights = []
         for ch, count in chunk_counts.items():
-            chunk_ids = list(ch.encode("utf-8"))
+            chunk_ids = ch.encode("utf-8").decode("latin-1")
             if len(chunk_ids) > 1:
                 ids.append(chunk_ids)
                 weights.append(count)
@@ -62,51 +63,24 @@ class RegexTokenizer(Tokenizer):
             stats = {}
             for chunk_ids, w in zip(ids, weights):
                 # count pairs in this chunk, adding up counts across chunks
-                for pair in zip(chunk_ids, chunk_ids[1:]):
-                    stats[pair] = stats.get(pair, 0) + w
+                for cpair in zip(chunk_ids, chunk_ids[1:]):
+                    stats[cpair] = stats.get(cpair, 0) + w
             # find the pair with the highest count
-            pair = max(stats, key=stats.get)
+            cpair = max(stats, key=stats.get)
+            pair = (ord(cpair[0]), ord(cpair[1]))
             # mint a new token: assign it the next available id
             idx = 256 + i
             # replace all occurrences of pair in ids with idx
-            new_ids = []
-            new_weights = []
-            p0, p1 = pair
-            for chunk_ids, w in zip(ids, weights):
-                j = 0
-                n = len(chunk_ids)
-                last = n - 1
-                while j < last:
-                    if chunk_ids[j] == p0 and chunk_ids[j+1] == p1:
-                        new_chunk_ids = chunk_ids[:j]
-                        append = new_chunk_ids.append
-                        append(idx)
-                        j += 2
-                        while j < last:
-                            if chunk_ids[j] == p0 and chunk_ids[j+1] == p1:
-                                append(idx)
-                                j += 2
-                            else:
-                                append(chunk_ids[j])
-                                j += 1
-                        if j == last:
-                            append(chunk_ids[j])
-                        if len(new_chunk_ids) > 1:
-                            new_ids.append(new_chunk_ids)
-                            new_weights.append(w)
-                        break
-                    j += 1
-                else:
-                    new_ids.append(chunk_ids)
-                    new_weights.append(w)
-            ids = new_ids
-            weights = new_weights
+            # (str.replace is left to right and non-overlapping)
+            old = cpair[0] + cpair[1]
+            new = chr(idx)
+            ids = [chunk_ids.replace(old, new) for chunk_ids in ids]
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
             # prints
             if verbose:
-                print(f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {stats[pair]} occurrences")
+                print(f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {stats[cpair]} occurrences")
 
         # save class variables
         self.merges = merges # used in encode()
