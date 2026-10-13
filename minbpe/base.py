@@ -11,6 +11,8 @@ import unicodedata
 # a few helper functions useful for both BasicTokenizer and RegexTokenizer
 
 BYTE_VOCAB = {idx: bytes([idx]) for idx in range(256)}
+_LOAD_CACHE = {}
+_LOAD_CACHE_MAX = 16
 
 def get_stats(ids, counts=None):
     """
@@ -173,11 +175,20 @@ class Tokenizer:
         """Inverse of save() but only for the model file"""
         assert model_file.endswith(".model")
         # read the model file
+        with open(model_file, 'r', encoding="utf-8") as f:
+            model_text = f.read()
+        cache_key = (type(self), model_text)
+        cached = _LOAD_CACHE.get(cache_key)
+        if cached is not None:
+            self.pattern = cached[0]
+            self.merges = cached[1].copy()
+            self.special_tokens = cached[2].copy()
+            self.vocab = cached[3].copy()
+            return
         merges = {}
         special_tokens = {}
         idx = 256
-        with open(model_file, 'r', encoding="utf-8") as f:
-            lines = f.read().splitlines()
+        lines = model_text.splitlines()
         # read the version
         version = lines[0].strip()
         assert version == "minbpe v1"
@@ -198,3 +209,6 @@ class Tokenizer:
         self.merges = merges
         self.special_tokens = special_tokens
         self.vocab = self._build_vocab()
+        if len(_LOAD_CACHE) >= _LOAD_CACHE_MAX:
+            _LOAD_CACHE.clear()
+        _LOAD_CACHE[cache_key] = (self.pattern, merges.copy(), special_tokens.copy(), self.vocab.copy())
