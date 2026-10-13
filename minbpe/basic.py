@@ -26,7 +26,9 @@ class BasicTokenizer(Tokenizer):
 
         # input text preprocessing
         text_bytes = text.encode("utf-8") # raw bytes
-        ids = list(text_bytes) # list of integers in range 0..255
+        # token ids are held as one character per id, so that replacing a
+        # pair is a single left-to-right, non-overlapping str.replace
+        ids = text_bytes.decode("latin-1")
 
         # iteratively merge the most common pairs to create new tokens
         merges = {} # (int, int) -> int
@@ -35,38 +37,18 @@ class BasicTokenizer(Tokenizer):
             # count up the number of times every consecutive pair appears
             stats = Counter(pairwise(ids))
             # find the pair with the highest count
-            pair = stats.most_common(1)[0][0]
+            cpair = stats.most_common(1)[0][0]
+            pair = (ord(cpair[0]), ord(cpair[1]))
             # mint a new token: assign it the next available id
             idx = 256 + i
             # replace all occurrences of pair in ids with idx
-            p0, p1 = pair
-            j = 0
-            n = len(ids)
-            last = n - 1
-            while j < last:
-                if ids[j] == p0 and ids[j+1] == p1:
-                    newids = ids[:j]
-                    append = newids.append
-                    append(idx)
-                    j += 2
-                    while j < last:
-                        if ids[j] == p0 and ids[j+1] == p1:
-                            append(idx)
-                            j += 2
-                        else:
-                            append(ids[j])
-                            j += 1
-                    if j == last:
-                        append(ids[j])
-                    ids = newids
-                    break
-                j += 1
+            ids = ids.replace(cpair[0] + cpair[1], chr(idx))
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
             # prints
             if verbose:
-                print(f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {stats[pair]} occurrences")
+                print(f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {stats[cpair]} occurrences")
 
         # save class variables
         self.merges = merges # used in encode()
