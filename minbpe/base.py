@@ -112,17 +112,23 @@ class Tokenizer:
         """
         # write the model: to be used in load() later
         model_file = file_prefix + ".model"
-        with open(model_file, 'w') as f:
-            # write the version, pattern and merges, that's all that's needed
-            f.write("minbpe v1\n")
-            f.write(f"{self.pattern}\n")
-            # write the special tokens, first the number of them, then each one
-            f.write(f"{len(self.special_tokens)}\n")
-            for special, idx in self.special_tokens.items():
-                f.write(f"{special} {idx}\n")
+        special_items = tuple(self.special_tokens.items())
+        merge_keys = tuple(self.merges)
+        cached_model_file = getattr(self, "_model_file_cache", None)
+        if cached_model_file is not None and cached_model_file[0] == self.pattern and cached_model_file[1] == special_items and cached_model_file[2] == merge_keys:
+            model_text = cached_model_file[3]
+        else:
+            lines = ["minbpe v1\n", f"{self.pattern}\n", f"{len(special_items)}\n"]
+            append = lines.append
+            for special, idx in special_items:
+                append(f"{special} {idx}\n")
             # the merges dict
-            for idx1, idx2 in self.merges:
-                f.write(f"{idx1} {idx2}\n")
+            for idx1, idx2 in merge_keys:
+                append(f"{idx1} {idx2}\n")
+            model_text = "".join(lines)
+            self._model_file_cache = (self.pattern, special_items, merge_keys, model_text)
+        with open(model_file, 'w') as f:
+            f.write(model_text)
         # write the vocab: for the human to look at
         vocab_file = file_prefix + ".vocab"
         vocab_items = tuple(self.vocab.items())
