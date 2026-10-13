@@ -125,7 +125,6 @@ class RegexTokenizer(Tokenizer):
                 for p in tied:
                     if p != cpair:
                         heappush(heap, (-top, p))
-            touched = set()
             pair = (ord(cpair[0]), ord(cpair[1]))
             # mint a new token: assign it the next available id
             idx = 256 + i
@@ -134,43 +133,68 @@ class RegexTokenizer(Tokenizer):
             # updating the pair counts of those chunks only
             old = cpair
             new = chr(idx)
-            for j in tuple(where[cpair]):
-                chunk_ids = ids[j]
+            # only the neighbours of each occurrence change; the pair
+            # itself disappears from every affected chunk
+            o0 = old[0]
+            o1 = old[1]
+            oo = o1 + o0
+            nn = new + new
+            delta = {}
+            dget = delta.get
+            for j in where.pop(cpair):
                 w = weights[j]
-                new_ids = chunk_ids.replace(old, new)
+                parts = ids[j].split(old)
+                new_ids = new.join(parts)
                 ids[j] = new_ids
-                old_list = list(map(str.__add__, chunk_ids, chunk_ids[1:]))
-                new_list = list(map(str.__add__, new_ids, new_ids[1:]))
-                for p in old_list:
-                    stats[p] -= w
-                for p in new_list:
-                    if p in stats:
-                        stats[p] += w
+                lost = []
+                added = []
+                L = parts[0]
+                if L:
+                    c = L[-1]
+                    lost.append(c + o0)
+                    added.append(c + new)
+                for R in parts[1:-1]:
+                    if R:
+                        c = R[0]
+                        lost.append(o1 + c)
+                        added.append(new + c)
+                        c = R[-1]
+                        lost.append(c + o0)
+                        added.append(c + new)
                     else:
-                        stats[p] = w
-                old_pairs = set(old_list)
-                new_pairs = set(new_list)
-                for p in old_pairs:
-                    if p not in new_pairs:
+                        lost.append(oo)
+                        added.append(nn)
+                R = parts[-1]
+                if R:
+                    c = R[0]
+                    lost.append(o1 + c)
+                    added.append(new + c)
+                for p in lost:
+                    delta[p] = dget(p, 0) - w
+                    if p != cpair and p not in new_ids:
                         where[p].discard(j)
-                        if not stats[p]:
-                            del stats[p]
-                            del where[p]
-                            pushed.pop(p, None)
-                for p in new_pairs:
-                    if p not in old_pairs:
-                        if p in where:
-                            where[p].add(j)
-                        else:
-                            where[p] = {j}
-                touched |= old_pairs
-                touched |= new_pairs
-            # push only pairs whose count differs from their latest entry
-            for p in touched:
-                c = stats.get(p)
-                if c and c != pushed.get(p):
-                    pushed[p] = c
-                    heappush(heap, (-c, p))
+                for p in added:
+                    delta[p] = dget(p, 0) + w
+                    if p in where:
+                        where[p].add(j)
+                    else:
+                        where[p] = {j}
+            del stats[cpair]
+            pushed.pop(cpair, None)
+            delta.pop(cpair, None)
+            # apply the deltas; push only pairs whose count differs from
+            # their latest entry
+            for p, d in delta.items():
+                c = stats.get(p, 0) + d
+                if c:
+                    stats[p] = c
+                    if c != pushed.get(p):
+                        pushed[p] = c
+                        heappush(heap, (-c, p))
+                elif p in stats:
+                    del stats[p]
+                    del where[p]
+                    pushed.pop(p, None)
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
