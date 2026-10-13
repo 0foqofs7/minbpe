@@ -166,7 +166,18 @@ class Tokenizer:
             # the merges dict
             for pair in merge_keys:
                 append(render_merge_line(pair))
-            model_bytes = "".join(lines).encode("utf-8")
+            model_text = "".join(lines)
+            model_bytes = model_text.encode("utf-8")
+            load_merges = {pair: 256 + i for i, pair in enumerate(merge_keys)}
+            load_special_tokens = dict(special_items)
+            load_vocab = BYTE_VOCAB.copy()
+            for (p0, p1), idx in load_merges.items():
+                load_vocab[idx] = load_vocab[p0] + load_vocab[p1]
+            for special, idx in load_special_tokens.items():
+                load_vocab[idx] = special.encode("utf-8")
+            if len(_LOAD_CACHE) >= _LOAD_CACHE_MAX:
+                _LOAD_CACHE.clear()
+            _LOAD_CACHE[(type(self), model_text)] = (self.pattern, load_merges, load_special_tokens, load_vocab)
             self._model_file_cache = (self.pattern, special_items, merge_keys, model_bytes)
         with open(model_file, "wb") as f:
             f.write(model_bytes)
