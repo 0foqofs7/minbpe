@@ -234,10 +234,16 @@ class RegexTokenizer(Tokenizer):
         # all chunks of text are encoded separately, then results are joined
         ids = []
         merge_map = build_merge_map(self.merges)
+        # identical chunks encode to identical ids, so each is encoded once
+        cache = {}
+        extend = ids.extend
         for chunk in text_chunks:
-            chunk_bytes = chunk.encode("utf-8") # raw bytes
-            chunk_ids = self._encode_chunk(chunk_bytes, merge_map)
-            ids.extend(chunk_ids)
+            chunk_ids = cache.get(chunk)
+            if chunk_ids is None:
+                chunk_bytes = chunk.encode("utf-8") # raw bytes
+                chunk_ids = self._encode_chunk(chunk_bytes, merge_map)
+                cache[chunk] = chunk_ids
+            extend(chunk_ids)
         return ids
 
     def encode(self, text, allowed_special="none_raise"):
