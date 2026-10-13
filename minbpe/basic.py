@@ -63,36 +63,38 @@ class BasicTokenizer(Tokenizer):
             # mint a new token: assign it the next available id
             idx = 256 + i
             c = chr(idx)
-            # update the pair counts around each run of adjacent occurrences
-            old = []
-            new = []
-            j = ids.find(cpair)
-            while j != -1:
-                s = j
-                e = j + 2
-                j = ids.find(cpair, e)
-                while j == e:
-                    e += 2
-                    j = ids.find(cpair, e)
-                lo = s - 1 if s else 0
-                seg = ids[lo:e + 1]
-                old.extend(map(str.__add__, seg, seg[1:]))
-                seg = ids[lo:s] + c * ((e - s) // 2) + ids[e:e + 1]
-                new.extend(map(str.__add__, seg, seg[1:]))
+            # split ids at the (non-overlapping, left-to-right) occurrences of
+            # the pair; the characters around each occurrence are the ends of
+            # the neighbouring parts, and an empty inner part means two
+            # occurrences are adjacent
+            parts = ids.split(cpair)
+            m = len(parts) - 1
+            a, b = cpair
+            lefts = [p[-1] for p in parts[:-1] if p]
+            rights = [p[0] for p in parts[1:] if p]
+            z = m - len(rights) - (not parts[-1])
+            old = Counter([l + a for l in lefts])
+            old.update([b + r for r in rights])
+            old[cpair] += m
+            new = Counter([l + c for l in lefts])
+            new.update([c + r for r in rights])
+            if z:
+                old[b + a] += z
+                new[c + c] += z
             # drop pairs whose count reaches zero so the max scan stays small
             stats.update(new)
-            for p, n in Counter(old).items():
+            for p, n in old.items():
                 n = stats[p] - n
                 if n:
                     stats[p] = n
                 else:
                     del stats[p]
-            for p in set(new).union(old):
+            for p in new.keys() | old.keys():
                 n = get(p)
                 if n:
                     heappush(heap, (-n, p))
             # replace all occurrences of pair in ids with idx
-            ids = ids.replace(cpair, c)
+            ids = c.join(parts)
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
