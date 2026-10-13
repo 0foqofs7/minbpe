@@ -17,6 +17,8 @@ _RENDER_TOKEN_CACHE = {}
 _RENDER_TOKEN_CACHE_MAX = 8192
 _MERGE_LINE_CACHE = {}
 _MERGE_LINE_CACHE_MAX = 8192
+_VOCAB_LINE_CACHE = {}
+_VOCAB_LINE_CACHE_MAX = 8192
 
 def get_stats(ids, counts=None):
     """
@@ -92,6 +94,22 @@ def render_merge_line(pair):
     _MERGE_LINE_CACHE[pair] = line
     return line
 
+
+def render_vocab_line(idx, token, child0=None, child1=None):
+    key = (idx, token, child0, child1)
+    cached = _VOCAB_LINE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    s = render_token(token)
+    if child0 is None:
+        line = f"[{s}] {idx}\n"
+    else:
+        line = f"[{render_token(child0)}][{render_token(child1)}] -> [{s}] {idx}\n"
+    if len(_VOCAB_LINE_CACHE) >= _VOCAB_LINE_CACHE_MAX:
+        _VOCAB_LINE_CACHE.clear()
+    _VOCAB_LINE_CACHE[key] = line
+    return line
+
 # -----------------------------------------------------------------------------
 # the base Tokenizer class
 
@@ -161,32 +179,24 @@ class Tokenizer:
             vocab_text = cached_vocab_file[2]
         else:
             inverted_merges = {idx: pair for pair, idx in merge_items}
-            cached = getattr(self, "_rendered_vocab_cache", None)
-            if cached is not None and cached[0] == vocab_items:
-                rendered_vocab = cached[1]
-            else:
-                rendered_vocab = {idx: render_token(token) for idx, token in vocab_items}
-                self._rendered_vocab_cache = (vocab_items, rendered_vocab)
             lines = []
             append = lines.append
-            for idx in self.vocab:
+            vocab = self.vocab
+            for idx, token in vocab_items:
                 # note: many tokens may be partial utf-8 sequences
                 # and cannot be decoded into valid strings. Here we're using
                 # errors='replace' to replace them with the replacement char �.
                 # this also means that we couldn't possibly use .vocab in load()
                 # because decoding in this way is a lossy operation!
-                s = rendered_vocab[idx]
                 # find the children of this token, if any
                 if idx in inverted_merges:
                     # if this token has children, render it nicely as a merge
                     idx0, idx1 = inverted_merges[idx]
-                    s0 = rendered_vocab[idx0]
-                    s1 = rendered_vocab[idx1]
-                    append(f"[{s0}][{s1}] -> [{s}] {idx}\n")
+                    append(render_vocab_line(idx, token, vocab[idx0], vocab[idx1]))
                 else:
                     # otherwise this is leaf token, just print it
                     # (this should just be the first 256 tokens, the bytes)
-                    append(f"[{s}] {idx}\n")
+                    append(render_vocab_line(idx, token))
             vocab_text = "".join(lines)
             self._vocab_file_cache = (vocab_items, merge_items, vocab_text)
         with open(vocab_file, "w", encoding="utf-8") as f:
