@@ -15,6 +15,8 @@ _LOAD_CACHE = {}
 _LOAD_CACHE_MAX = 16
 _RENDER_TOKEN_CACHE = {}
 _RENDER_TOKEN_CACHE_MAX = 8192
+_MERGE_LINE_CACHE = {}
+_MERGE_LINE_CACHE_MAX = 8192
 
 def get_stats(ids, counts=None):
     """
@@ -79,6 +81,17 @@ def render_token(t: bytes) -> str:
     _RENDER_TOKEN_CACHE[t] = s
     return s
 
+
+def render_merge_line(pair):
+    cached = _MERGE_LINE_CACHE.get(pair)
+    if cached is not None:
+        return cached
+    line = f"{pair[0]} {pair[1]}\n"
+    if len(_MERGE_LINE_CACHE) >= _MERGE_LINE_CACHE_MAX:
+        _MERGE_LINE_CACHE.clear()
+    _MERGE_LINE_CACHE[pair] = line
+    return line
+
 # -----------------------------------------------------------------------------
 # the base Tokenizer class
 
@@ -133,8 +146,8 @@ class Tokenizer:
             for special, idx in special_items:
                 append(f"{special} {idx}\n")
             # the merges dict
-            for idx1, idx2 in merge_keys:
-                append(f"{idx1} {idx2}\n")
+            for pair in merge_keys:
+                append(render_merge_line(pair))
             model_text = "".join(lines)
             self._model_file_cache = (self.pattern, special_items, merge_keys, model_text)
         with open(model_file, 'w') as f:
