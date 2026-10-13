@@ -13,6 +13,8 @@ import unicodedata
 BYTE_VOCAB = {idx: bytes([idx]) for idx in range(256)}
 _LOAD_CACHE = {}
 _LOAD_CACHE_MAX = 16
+_RENDER_TOKEN_CACHE = {}
+_RENDER_TOKEN_CACHE_MAX = 8192
 
 def get_stats(ids, counts=None):
     """
@@ -67,8 +69,14 @@ def replace_control_characters(s: str) -> str:
 
 def render_token(t: bytes) -> str:
     # pretty print a token, escaping control characters
+    cached = _RENDER_TOKEN_CACHE.get(t)
+    if cached is not None:
+        return cached
     s = t.decode('utf-8', errors='replace')
     s = replace_control_characters(s)
+    if len(_RENDER_TOKEN_CACHE) >= _RENDER_TOKEN_CACHE_MAX:
+        _RENDER_TOKEN_CACHE.clear()
+    _RENDER_TOKEN_CACHE[t] = s
     return s
 
 # -----------------------------------------------------------------------------
