@@ -82,15 +82,13 @@ class RegexTokenizer(Tokenizer):
         vocab = BYTE_VOCAB.copy() # idx -> bytes
         # count the number of times every consecutive pair appears, once;
         # where maps each pair to the indices of the chunks containing it
+        from collections import defaultdict
+        where = defaultdict(set)
         stats = {}
-        where = {}
         for j, (chunk_ids, w) in enumerate(zip(ids, weights)):
             for cpair in map(str.__add__, chunk_ids, chunk_ids[1:]):
                 stats[cpair] = stats.get(cpair, 0) + w
-                if cpair in where:
-                    where[cpair].add(j)
-                else:
-                    where[cpair] = {j}
+                where[cpair].add(j)
         import heapq
         # lazy max-heap of (-count, pair); an entry is current only while
         # stats[pair] still equals its count, stale entries are skipped
@@ -118,7 +116,7 @@ class RegexTokenizer(Tokenizer):
             if len(tied) == 1:
                 cpair = tied[0]
             else:
-                first = min(min(where[p]) for p in tied)
+                first = min(j for p in tied for j in where[p] if p in ids[j])
                 tied_set = set(tied)
                 chunk_ids = ids[first]
                 cpair = next(p for p in map(str.__add__, chunk_ids, chunk_ids[1:]) if p in tied_set)
@@ -141,44 +139,49 @@ class RegexTokenizer(Tokenizer):
             nn = new + new
             delta = {}
             dget = delta.get
+            # where may hold stale chunk indices (chunks that no longer
+            # contain the pair); splitting those yields a single part
             for j in where.pop(cpair):
-                w = weights[j]
                 parts = ids[j].split(old)
-                new_ids = new.join(parts)
-                ids[j] = new_ids
-                lost = []
-                added = []
+                n = len(parts)
+                if n == 1:
+                    continue
+                w = weights[j]
+                ids[j] = new.join(parts)
                 L = parts[0]
                 if L:
                     c = L[-1]
-                    lost.append(c + o0)
-                    added.append(c + new)
-                for R in parts[1:-1]:
+                    p = c + o0
+                    delta[p] = dget(p, 0) - w
+                    p = c + new
+                    delta[p] = dget(p, 0) + w
+                    where[p].add(j)
+                for R in (parts[1:-1] if n > 2 else ()):
                     if R:
                         c = R[0]
-                        lost.append(o1 + c)
-                        added.append(new + c)
+                        p = o1 + c
+                        delta[p] = dget(p, 0) - w
+                        p = new + c
+                        delta[p] = dget(p, 0) + w
+                        where[p].add(j)
                         c = R[-1]
-                        lost.append(c + o0)
-                        added.append(c + new)
+                        p = c + o0
+                        delta[p] = dget(p, 0) - w
+                        p = c + new
+                        delta[p] = dget(p, 0) + w
+                        where[p].add(j)
                     else:
-                        lost.append(oo)
-                        added.append(nn)
+                        delta[oo] = dget(oo, 0) - w
+                        delta[nn] = dget(nn, 0) + w
+                        where[nn].add(j)
                 R = parts[-1]
                 if R:
                     c = R[0]
-                    lost.append(o1 + c)
-                    added.append(new + c)
-                for p in lost:
+                    p = o1 + c
                     delta[p] = dget(p, 0) - w
-                    if p != cpair and p not in new_ids:
-                        where[p].discard(j)
-                for p in added:
+                    p = new + c
                     delta[p] = dget(p, 0) + w
-                    if p in where:
-                        where[p].add(j)
-                    else:
-                        where[p] = {j}
+                    where[p].add(j)
             del stats[cpair]
             pushed.pop(cpair, None)
             delta.pop(cpair, None)
