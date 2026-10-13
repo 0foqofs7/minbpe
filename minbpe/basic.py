@@ -9,7 +9,7 @@ But:
 - Does not handle any special tokens.
 """
 
-from itertools import compress
+from heapq import heapify, heappop, heappush
 
 from .base import Tokenizer, get_stats, merge, build_merge_map
 
@@ -36,14 +36,29 @@ class BasicTokenizer(Tokenizer):
         # count up the number of times every consecutive pair appears, keyed by
         # the two-character string; kept up to date incrementally after each merge
         stats = Counter(map(str.__add__, ids, ids[1:]))
+        # lazy max-heap of (-count, pair); entries whose count no longer
+        # matches stats are stale and dropped when they reach the top
+        heap = [(-n, p) for p, n in stats.items()]
+        heapify(heap)
+        get = stats.get
         for i in range(num_merges):
             # find the pair with the highest count; ties go to the pair that
             # occurs first in ids
-            top = max(stats.values(), default=0)
-            if not top:
+            while heap and get(heap[0][1]) != -heap[0][0]:
+                heappop(heap)
+            if not heap:
                 raise IndexError("list index out of range")
-            cands = list(compress(stats, map(top.__eq__, stats.values())))
-            cpair = cands[0] if len(cands) == 1 else min(cands, key=ids.find)
+            negtop = heap[0][0]
+            top = -negtop
+            cands = set()
+            while heap and heap[0][0] == negtop:
+                p = heappop(heap)[1]
+                if get(p) == top:
+                    cands.add(p)
+            cpair = min(cands, key=ids.find) if len(cands) > 1 else cands.pop()
+            for p in cands:
+                if p != cpair:
+                    heappush(heap, (negtop, p))
             pair = (ord(cpair[0]), ord(cpair[1]))
             # mint a new token: assign it the next available id
             idx = 256 + i
@@ -72,6 +87,10 @@ class BasicTokenizer(Tokenizer):
                     stats[p] = n
                 else:
                     del stats[p]
+            for p in set(new).union(old):
+                n = get(p)
+                if n:
+                    heappush(heap, (-n, p))
             # replace all occurrences of pair in ids with idx
             ids = ids.replace(cpair, c)
             # save the merge
