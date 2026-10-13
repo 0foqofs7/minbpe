@@ -124,20 +124,21 @@ class Tokenizer:
         # write the vocab: for the human to look at
         vocab_file = file_prefix + ".vocab"
         inverted_merges = {idx: pair for pair, idx in self.merges.items()}
+        rendered_vocab = {idx: render_token(token) for idx, token in self.vocab.items()}
         with open(vocab_file, "w", encoding="utf-8") as f:
-            for idx, token in self.vocab.items():
+            for idx in self.vocab:
                 # note: many tokens may be partial utf-8 sequences
                 # and cannot be decoded into valid strings. Here we're using
                 # errors='replace' to replace them with the replacement char �.
                 # this also means that we couldn't possibly use .vocab in load()
                 # because decoding in this way is a lossy operation!
-                s = render_token(token)
+                s = rendered_vocab[idx]
                 # find the children of this token, if any
                 if idx in inverted_merges:
                     # if this token has children, render it nicely as a merge
                     idx0, idx1 = inverted_merges[idx]
-                    s0 = render_token(self.vocab[idx0])
-                    s1 = render_token(self.vocab[idx1])
+                    s0 = rendered_vocab[idx0]
+                    s1 = rendered_vocab[idx1]
                     f.write(f"[{s0}][{s1}] -> [{s}] {idx}\n")
                 else:
                     # otherwise this is leaf token, just print it
