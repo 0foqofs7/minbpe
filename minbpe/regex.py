@@ -11,6 +11,7 @@ Unlike BasicTokenizer:
 
 from collections import Counter
 from heapq import heapify, heappop, heappush, heapreplace
+from operator import add
 import regex as re
 from .base import Tokenizer
 
@@ -58,11 +59,12 @@ class RegexTokenizer(Tokenizer):
         # count the number of times every consecutive pair appears; the counts
         # are then kept up to date by re-counting only the chunks a merge changes
         # pair -> indices of the chunks that contain it (once per occurrence;
-        # it may also list chunks that no longer hold the pair)
+        # it may also list chunks that no longer hold the pair); a pair is
+        # kept as the str of its two tokens, which caches its hash
         where = {}
         where_get = where.get
         for ci, chunk_ids in enumerate(ids):
-            for pair in zip(chunk_ids, chunk_ids[1:]):
+            for pair in map(add, chunk_ids, chunk_ids[1:]):
                 w = where_get(pair)
                 if w is None:
                     where[pair] = [ci]
@@ -116,7 +118,7 @@ class RegexTokenizer(Tokenizer):
                     ci = min(cands)
                     cands.discard(ci)
                     chunk_ids = ids[ci]
-                    cpair = next((p for p in zip(chunk_ids, chunk_ids[1:]) if p in tied_set), None)
+                    cpair = next((p for p in map(add, chunk_ids, chunk_ids[1:]) if p in tied_set), None)
                 for p in tied:
                     if p != cpair:
                         heappush(heap, (negc, p))
@@ -126,40 +128,35 @@ class RegexTokenizer(Tokenizer):
             # (str.split cuts non-overlapping occurrences left to right, like
             # merge(); only the pairs next to an occurrence change)
             a, b = cpair
-            old = a + b
+            old = cpair
             new = chr(idx)
-            # net change of every pair count, summed over all chunks
-            delta = {}
-            delta_get = delta.get
+            # the chunks holding an occurrence, by the token before it (""
+            # when that is the end of an adjacent occurrence) and by the token
+            # after it; a chunk is listed once per occurrence
+            left = {}
+            left_get = left.get
+            right = {}
+            right_get = right.get
             for ci in where.pop(cpair):
                 parts = ids[ci].split(old)
                 if len(parts) == 1:
                     continue
                 ids[ci] = new.join(parts)
-                count = counts[ci]
                 if len(parts) == 2:
                     # a single occurrence: at most one pair on each side
                     prev, part = parts
                     if prev:
                         c = prev[-1]
-                        p = (c, a)
-                        delta[p] = delta_get(p, 0) - count
-                        p = (c, new)
-                        delta[p] = delta_get(p, 0) + count
-                        w = where_get(p)
+                        w = left_get(c)
                         if w is None:
-                            where[p] = [ci]
+                            left[c] = [ci]
                         else:
                             w.append(ci)
                     if part:
                         c = part[0]
-                        p = (b, c)
-                        delta[p] = delta_get(p, 0) - count
-                        p = (new, c)
-                        delta[p] = delta_get(p, 0) + count
-                        w = where_get(p)
+                        w = right_get(c)
                         if w is None:
-                            where[p] = [ci]
+                            right[c] = [ci]
                         else:
                             w.append(ci)
                     continue
@@ -167,48 +164,54 @@ class RegexTokenizer(Tokenizer):
                 # occurrences)
                 prev = parts[0] or None
                 for part in parts[1:]:
-                    if prev:
-                        c = prev[-1]
-                        p = (c, a)
-                        delta[p] = delta_get(p, 0) - count
-                        p = (c, new)
-                    elif prev is not None:
-                        p = (b, a)
-                        delta[p] = delta_get(p, 0) - count
-                        p = (new, new)
-                    else:
-                        p = None
-                    if p is not None:
-                        delta[p] = delta_get(p, 0) + count
-                        w = where_get(p)
+                    if prev is not None:
+                        c = prev[-1] if prev else ""
+                        w = left_get(c)
                         if w is None:
-                            where[p] = [ci]
+                            left[c] = [ci]
                         else:
                             w.append(ci)
                     if part:
                         c = part[0]
-                        p = (b, c)
-                        delta[p] = delta_get(p, 0) - count
-                        p = (new, c)
-                        delta[p] = delta_get(p, 0) + count
-                        w = where_get(p)
+                        w = right_get(c)
                         if w is None:
-                            where[p] = [ci]
+                            right[c] = [ci]
                         else:
                             w.append(ci)
                     prev = part
-            # (the order of stats does not matter: ties are settled above
-            # by chunk order); pairs whose count is unchanged keep their
-            # current heap entry
-            for p, d in delta.items():
-                if d and p != cpair:
-                    c = stats_get(p, 0) + d
-                    if c:
-                        stats[p] = c
-                        if d > 0:
-                            heappush(heap, (-c, p))
+            # update the pair counts (the order of stats does not matter: ties
+            # are settled above by chunk order); a lowered count keeps its
+            # heap entry, and pairs with the new token did not exist before
+            for c, w in left.items():
+                n = sum(map(counts_at, w))
+                if c:
+                    p = c + a
+                    q = c + new
+                else:
+                    p = b + a
+                    q = new + new
+                if p != cpair:
+                    n0 = stats[p] - n
+                    if n0:
+                        stats[p] = n0
                     else:
                         del stats[p]
+                stats[q] = n
+                heappush(heap, (-n, q))
+                where[q] = w
+            for c, w in right.items():
+                n = sum(map(counts_at, w))
+                p = b + c
+                if p != cpair:
+                    n0 = stats[p] - n
+                    if n0:
+                        stats[p] = n0
+                    else:
+                        del stats[p]
+                q = new + c
+                stats[q] = n
+                heappush(heap, (-n, q))
+                where[q] = w
             # no occurrence of the merged pair is left
             del stats[cpair]
             # save the merge
