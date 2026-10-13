@@ -59,17 +59,19 @@ class BasicTokenizer(Tokenizer):
         # given a string text, return the token ids
         text_bytes = text.encode("utf-8") # raw bytes
         ids = list(text_bytes) # list of integers in range 0..255
+        merges = self.merges
         while len(ids) >= 2:
             # find the pair with the lowest merge index
             stats = get_stats(ids)
-            pair = min(stats, key=lambda p: self.merges.get(p, float("inf")))
-            # subtle: if there are no more merges available, the key will
-            # result in an inf for every single pair, and the min will be
-            # just the first pair in the list, arbitrarily
-            # we can detect this terminating case by a membership check
-            if pair not in self.merges:
+            pair = None
+            idx = None
+            for p in stats:
+                merge_idx = merges.get(p)
+                if merge_idx is not None and (idx is None or merge_idx < idx):
+                    pair = p
+                    idx = merge_idx
+            # if there are no more merges available, break
+            if pair is None:
                 break # nothing else can be merged anymore
-            # otherwise let's merge the best pair (lowest merge index)
-            idx = self.merges[pair]
             ids = merge(ids, pair, idx)
         return ids
