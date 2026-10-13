@@ -39,19 +39,28 @@ class BasicTokenizer(Tokenizer):
             # mint a new token: assign it the next available id
             idx = 256 + i
             # replace all occurrences of pair in ids with idx
-            newids = []
-            append = newids.append
             p0, p1 = pair
             j = 0
             n = len(ids)
-            while j < n:
-                if ids[j] == p0 and j < n - 1 and ids[j+1] == p1:
+            last = n - 1
+            while j < last:
+                if ids[j] == p0 and ids[j+1] == p1:
+                    newids = ids[:j]
+                    append = newids.append
                     append(idx)
                     j += 2
-                else:
-                    append(ids[j])
-                    j += 1
-            ids = newids
+                    while j < last:
+                        if ids[j] == p0 and ids[j+1] == p1:
+                            append(idx)
+                            j += 2
+                        else:
+                            append(ids[j])
+                            j += 1
+                    if j == last:
+                        append(ids[j])
+                    ids = newids
+                    break
+                j += 1
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
