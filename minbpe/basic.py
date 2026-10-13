@@ -58,6 +58,22 @@ class BasicTokenizer(Tokenizer):
         # given a string text, return the token ids
         text_bytes = text.encode("utf-8") # raw bytes
         ids = list(text_bytes) # list of integers in range 0..255
+        # when every merge produces an id larger than both of its inputs (and
+        # ids are distinct), the lowest-index pair present only ever increases,
+        # so applying each merge once in index order gives the same result.
+        # tokens are held one per character so each merge is a str.replace,
+        # which also replaces left to right without overlaps.
+        ordered = sorted(self.merges.items(), key=lambda kv: kv[1])
+        if all(type(p0) is int and type(p1) is int and type(idx) is int
+               and 0 <= p0 < idx and 0 <= p1 < idx and idx < 0x110000
+               for (p0, p1), idx in ordered) and \
+                len({idx for _, idx in ordered}) == len(ordered):
+            s = text_bytes.decode("latin-1")
+            for (p0, p1), idx in ordered:
+                if len(s) < 2:
+                    break
+                s = s.replace(chr(p0) + chr(p1), chr(idx))
+            return list(map(ord, s))
         merge_lookup = self._get_merge_lookup()
         while len(ids) >= 2:
             # find the pair with the lowest merge index
