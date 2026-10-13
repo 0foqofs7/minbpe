@@ -70,15 +70,32 @@ class BasicTokenizer(Tokenizer):
             parts = ids.split(cpair)
             m = len(parts) - 1
             a, b = cpair
-            lefts = [p[-1] for p in parts[:-1] if p]
-            rights = [p[0] for p in parts[1:] if p]
-            z = m - len(rights) - (not parts[-1])
-            old = Counter([l + a for l in lefts] + [b + r for r in rights])
-            old[cpair] += m
-            new = Counter([l + c for l in lefts] + [c + r for r in rights])
+            old = {cpair: m}
+            new = {}
+            old_get = old.get
+            new_get = new.get
+            for p in parts[:-1]:
+                if p:
+                    l = p[-1]
+                    q = l + a
+                    old[q] = old_get(q, 0) + 1
+                    q = l + c
+                    new[q] = new_get(q, 0) + 1
+            last_part = len(parts) - 1
+            z = 0
+            for j, p in enumerate(parts[1:], 1):
+                if p:
+                    r = p[0]
+                    q = b + r
+                    old[q] = old_get(q, 0) + 1
+                    q = c + r
+                    new[q] = new_get(q, 0) + 1
+                elif j != last_part:
+                    z += 1
             if z:
-                old[b + a] += z
-                new[c + c] += z
+                q = b + a
+                old[q] = old_get(q, 0) + z
+                new[c + c] = z
             # every new pair contains the freshly minted character c, so none
             # of them is in stats yet and old and new share no pair
             dict.update(stats, new)
