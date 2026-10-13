@@ -78,10 +78,10 @@ class GPT4Tokenizer(RegexTokenizer):
         # finally register the special tokens
         self.register_special_tokens(GPT4_SPECIAL_TOKENS)
 
-    def _encode_chunk(self, text_bytes):
+    def _encode_chunk(self, text_bytes, merge_map=None):
         # before we start processing bytes, we have to permute them
         text_bytes = bytes(self.byte_shuffle[b] for b in text_bytes)
-        ids = super()._encode_chunk(text_bytes)
+        ids = super()._encode_chunk(text_bytes, merge_map)
         return ids
 
     def decode(self, ids):

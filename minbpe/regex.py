@@ -10,7 +10,7 @@ Unlike BasicTokenizer:
 """
 
 import regex as re
-from .base import Tokenizer, get_stats, merge
+from .base import Tokenizer, get_stats, merge, build_merge_map
 
 
 # the main GPT text split patterns, see
@@ -108,20 +108,23 @@ class RegexTokenizer(Tokenizer):
         text = text_bytes.decode("utf-8", errors="replace")
         return text
 
-    def _encode_chunk(self, text_bytes):
+    def _encode_chunk(self, text_bytes, merge_map=None):
         # return the token ids
         # let's begin. first, convert all bytes to integers in range 0..255
         ids = list(text_bytes)
-        merges = self.merges
+        if merge_map is None:
+            merge_map = build_merge_map(self.merges)
         while len(ids) >= 2:
             # find the pair with the lowest merge index
             pair = None
             idx = None
             for i in range(len(ids) - 1):
-                p = (ids[i], ids[i+1])
-                merge_idx = merges.get(p)
+                nexts = merge_map.get(ids[i])
+                if nexts is None:
+                    continue
+                merge_idx = nexts.get(ids[i+1])
                 if merge_idx is not None and (idx is None or merge_idx < idx):
-                    pair = p
+                    pair = (ids[i], ids[i+1])
                     idx = merge_idx
             # if there are no more merges available, break
             if pair is None:
@@ -147,9 +150,10 @@ class RegexTokenizer(Tokenizer):
         text_chunks = re.findall(self.compiled_pattern, text)
         # all chunks of text are encoded separately, then results are joined
         ids = []
+        merge_map = build_merge_map(self.merges)
         for chunk in text_chunks:
             chunk_bytes = chunk.encode("utf-8") # raw bytes
-            chunk_ids = self._encode_chunk(chunk_bytes)
+            chunk_ids = self._encode_chunk(chunk_bytes, merge_map)
             ids.extend(chunk_ids)
         return ids
 

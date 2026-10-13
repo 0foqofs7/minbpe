@@ -40,6 +40,13 @@ def merge(ids, pair, idx):
             i += 1
     return newids
 
+
+def build_merge_map(merges):
+    merge_map = {}
+    for (p0, p1), idx in merges.items():
+        merge_map.setdefault(p0, {})[p1] = idx
+    return merge_map
+
 # first two helper functions...
 def replace_control_characters(s: str) -> str:
     # we don't want to print control characters
