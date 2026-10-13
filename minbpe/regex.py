@@ -82,7 +82,28 @@ class RegexTokenizer(Tokenizer):
             # mint a new token: assign it the next available id
             idx = 256 + i
             # replace all occurrences of pair in ids with idx
-            ids = [_merge_if_present(chunk_ids, pair, idx) for chunk_ids in ids]
+            p0, p1 = pair
+            merged_ids = []
+            for chunk_ids in ids:
+                newids = None
+                j = 0
+                n = len(chunk_ids)
+                last = n - 1
+                while j < last:
+                    if chunk_ids[j] == p0 and chunk_ids[j+1] == p1:
+                        if newids is None:
+                            newids = chunk_ids[:j]
+                            append = newids.append
+                        append(idx)
+                        j += 2
+                    else:
+                        if newids is not None:
+                            append(chunk_ids[j])
+                        j += 1
+                if j == last and newids is not None:
+                    append(chunk_ids[j])
+                merged_ids.append(chunk_ids if newids is None else newids)
+            ids = merged_ids
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
