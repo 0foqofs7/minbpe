@@ -76,7 +76,13 @@ class BasicTokenizer(Tokenizer):
         # given ids (list of integers), return Python string
         vocab = self.vocab
         if len(vocab) and max(vocab) == len(vocab) - 1 and isinstance(ids, (list, tuple)):
-            vocab_list = [vocab[i] for i in range(len(vocab))]
+            vocab_items = tuple(vocab.items())
+            cached = getattr(self, "_decode_vocab_list_cache", None)
+            if cached is not None and cached[0] == vocab_items:
+                vocab_list = cached[1]
+            else:
+                vocab_list = [vocab[i] for i in range(len(vocab))]
+                self._decode_vocab_list_cache = (vocab_items, vocab_list)
             try:
                 text_bytes = b"".join([vocab_list[idx] if idx >= 0 else vocab[idx] for idx in ids])
             except (IndexError, KeyError, TypeError):

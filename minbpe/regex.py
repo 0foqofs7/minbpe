@@ -114,13 +114,20 @@ class RegexTokenizer(Tokenizer):
         append = part_bytes.append
         if len(vocab) and max(vocab) == len(vocab) - 1:
             special_tokens = self.inverse_special_tokens_bytes
-            max_idx = max(len(vocab) - 1, max(special_tokens, default=0))
-            lookup = [None] * (max_idx + 1)
-            for i in range(len(vocab)):
-                lookup[i] = vocab[i]
-            for idx, token in special_tokens.items():
-                if idx >= 0:
-                    lookup[idx] = token
+            vocab_items = tuple(vocab.items())
+            special_items = tuple(special_tokens.items())
+            cached = getattr(self, "_decode_lookup_cache", None)
+            if cached is not None and cached[0] == vocab_items and cached[1] == special_items:
+                lookup = cached[2]
+            else:
+                max_idx = max(len(vocab) - 1, max(special_tokens, default=0))
+                lookup = [None] * (max_idx + 1)
+                for i in range(len(vocab)):
+                    lookup[i] = vocab[i]
+                for idx, token in special_tokens.items():
+                    if idx >= 0:
+                        lookup[idx] = token
+                self._decode_lookup_cache = (vocab_items, special_items, lookup)
             try:
                 part_bytes = [lookup[idx] if idx >= 0 else special_tokens[idx] for idx in ids]
                 text_bytes = b"".join(part_bytes)
