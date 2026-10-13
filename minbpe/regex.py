@@ -9,7 +9,7 @@ Unlike BasicTokenizer:
 - RegexTokenizer handles optional special tokens.
 """
 
-from itertools import islice
+from heapq import heapify, heappop, heappush
 import regex as re
 from .base import Tokenizer, get_stats, merge, build_merge_lookup
 
@@ -91,15 +91,32 @@ class RegexTokenizer(Tokenizer):
                     where[pair].add(ci)
                 else:
                     where[pair] = {ci}
+        # lazy max-heap of (-count, pair); an entry is current only while
+        # stats still holds that count for the pair
+        heap = [(-c, p) for p, c in stats.items()]
+        heapify(heap)
         for i in range(num_merges):
             # find the pair with the highest count; ties go to the pair that
             # occurs first in the chunks, as with a freshly built stats dict
-            vals = list(stats.values())
-            best = max(vals)
-            if vals.count(best) == 1:
-                cpair = next(islice(stats, vals.index(best), None))
+            if not stats:
+                max(stats.values()) # nothing left to merge: raise as before
+            while True:
+                negc, p = heap[0]
+                if stats_get(p) == -negc:
+                    break
+                heappop(heap)
+            best = -negc
+            # take every current entry tied at the top count off the heap
+            tied = []
+            while heap and heap[0][0] == negc:
+                p = heappop(heap)[1]
+                if stats_get(p) == best and p not in tied:
+                    tied.append(p)
+            if len(tied) == 1:
+                cpair = tied[0]
             else:
-                tied = [p for p, c in stats.items() if c == best]
+                for p in tied:
+                    heappush(heap, (negc, p))
                 # only the earliest chunk holding a tied pair needs scanning
                 # (where may also list chunks that no longer hold the pair)
                 cands = set().union(*[where[p] for p in tied])
@@ -118,6 +135,7 @@ class RegexTokenizer(Tokenizer):
             a, b = cpair
             old = a + b
             new = chr(idx)
+            changed = set()
             for ci in where.pop(cpair):
                 parts = ids[ci].split(old)
                 if len(parts) == 1:
@@ -141,6 +159,8 @@ class RegexTokenizer(Tokenizer):
                         removed.append((b, c))
                         added.append((new, c))
                     prev = part
+                changed.update(removed)
+                changed.update(added)
                 # (the order of stats does not matter: ties are settled above
                 # by chunk order)
                 for p in removed:
@@ -157,6 +177,10 @@ class RegexTokenizer(Tokenizer):
                         where[p] = {ci}
             # no occurrence of the merged pair is left
             del stats[cpair]
+            for p in changed:
+                c = stats_get(p)
+                if c:
+                    heappush(heap, (-c, p))
             # save the merge
             pair = (ord(cpair[0]), ord(cpair[1]))
             merges[pair] = idx
