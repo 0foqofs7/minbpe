@@ -98,16 +98,30 @@ class RegexTokenizer(Tokenizer):
         pushed = dict(stats)
         heappush = heapq.heappush
         heappop = heapq.heappop
+        # tied pairs not chosen by the previous merge, kept off the heap
+        # (each was current with count pend_top when it was set aside)
+        pending = []
+        pend_top = 0
         for i in range(num_merges):
             if not stats:
                 raise ValueError("max() arg is an empty sequence")
             # find the pair with the highest count; ties go to the pair
             # that occurs first in chunk order
-            while stats.get(heap[0][1]) != -heap[0][0]:
+            while heap and stats.get(heap[0][1]) != -heap[0][0]:
                 heappop(heap)
-            top = -heap[0][0]
-            tied = []
-            seen = set()
+            top = -heap[0][0] if heap else 0
+            if pending:
+                sget = stats.get
+                tied = [p for p in pending if sget(p) == pend_top]
+                if tied and pend_top >= top:
+                    top = pend_top
+                else:
+                    for p in tied:
+                        heappush(heap, (-pend_top, p))
+                    tied = []
+            else:
+                tied = []
+            seen = set(tied)
             while heap and heap[0][0] == -top:
                 p = heappop(heap)[1]
                 if p not in seen and stats.get(p) == top:
@@ -115,14 +129,14 @@ class RegexTokenizer(Tokenizer):
                     tied.append(p)
             if len(tied) == 1:
                 cpair = tied[0]
+                pending = []
             else:
                 first = min(j for p in tied for j in where[p] if p in ids[j])
-                tied_set = set(tied)
                 chunk_ids = ids[first]
-                cpair = next(p for p in map(str.__add__, chunk_ids, chunk_ids[1:]) if p in tied_set)
-                for p in tied:
-                    if p != cpair:
-                        heappush(heap, (-top, p))
+                cpair = next(p for p in map(str.__add__, chunk_ids, chunk_ids[1:]) if p in seen)
+                tied.remove(cpair)
+                pending = tied
+            pend_top = top
             pair = (ord(cpair[0]), ord(cpair[1]))
             # mint a new token: assign it the next available id
             idx = 256 + i
