@@ -11,8 +11,13 @@ But:
 
 from collections import Counter
 from itertools import islice
+from operator import itemgetter
 
 from .base import Tokenizer, get_stats, merge, build_merge_lookup
+
+# last and first token of a part ("" for an empty part)
+_last = itemgetter(slice(-1, None))
+_first = itemgetter(slice(None, 1))
 
 
 class BasicTokenizer(Tokenizer):
@@ -57,33 +62,33 @@ class BasicTokenizer(Tokenizer):
             a, b = cpair
             new = chr(idx)
             parts = ids.split(a + b)
-            removed = []
-            added = []
-            prev = parts[0]
-            for k in range(1, len(parts)):
-                part = parts[k]
-                if prev:
-                    c = prev[-1]
-                    removed.append((c, a))
-                    added.append((c, new))
-                elif k > 1:
-                    removed.append((b, a))
-                    added.append((new, new))
-                if part:
-                    c = part[0]
-                    removed.append((b, c))
-                    added.append((new, c))
-                prev = part
-            for p in removed:
-                c = stats[p] - 1
+            # the token before each occurrence is the last one of the part
+            # before it; an empty part between two occurrences means it is b
+            left = Counter(map(_last, parts[:-1]))
+            both = left.pop("", 0) - (not parts[0])
+            # the token after each occurrence is the first one of the part
+            # after it (an empty part is counted on the left of the next one)
+            right = Counter(map(_first, parts[1:]))
+            right.pop("", None)
+            removed = [((c, a), n) for c, n in left.items()]
+            removed += [((b, c), n) for c, n in right.items()]
+            if both:
+                removed.append(((b, a), both))
+            for p, n in removed:
+                c = stats[p] - n
                 if c:
                     stats[p] = c
                 else:
                     del stats[p]
             # no occurrence of the merged pair is left
             del stats[cpair]
-            for p in added:
-                stats[p] = stats_get(p, 0) + 1
+            # pairs with the new token did not exist before
+            for c, n in left.items():
+                stats[(c, new)] = n
+            for c, n in right.items():
+                stats[(new, c)] = n
+            if both:
+                stats[(new, new)] = both
             ids = new.join(parts)
             # save the merge
             merges[pair] = idx
