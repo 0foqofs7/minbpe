@@ -108,11 +108,14 @@ class Tokenizer:
         self._merges = merges
         self._merge_lookup = None
         self._merge_lookup_size = -1
+        self._chunk_cache = {}
 
     def _get_merge_lookup(self):
         if self._merge_lookup is None or self._merge_lookup_size != len(self.merges):
             self._merge_lookup = build_merge_lookup(self.merges)
             self._merge_lookup_size = len(self.merges)
+            # encoded chunks depend on the merges, so drop them with the lookup
+            self._chunk_cache = {}
         return self._merge_lookup
 
     def train(self, text, vocab_size, verbose=False):
