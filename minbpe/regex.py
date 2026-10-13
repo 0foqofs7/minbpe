@@ -13,6 +13,25 @@ import regex as re
 from .base import Tokenizer, get_stats, merge
 
 
+def _merge_if_present(ids, pair, idx):
+    newids = None
+    i = 0
+    n = len(ids)
+    p0, p1 = pair
+    while i < n:
+        if ids[i] == p0 and i < n - 1 and ids[i+1] == p1:
+            if newids is None:
+                newids = ids[:i]
+                append = newids.append
+            append(idx)
+            i += 2
+        else:
+            if newids is not None:
+                append(ids[i])
+            i += 1
+    return ids if newids is None else newids
+
+
 # the main GPT text split patterns, see
 # https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py
 GPT2_SPLIT_PATTERN = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
@@ -57,7 +76,7 @@ class RegexTokenizer(Tokenizer):
             # mint a new token: assign it the next available id
             idx = 256 + i
             # replace all occurrences of pair in ids with idx
-            ids = [merge(chunk_ids, pair, idx) for chunk_ids in ids]
+            ids = [_merge_if_present(chunk_ids, pair, idx) for chunk_ids in ids]
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
