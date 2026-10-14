@@ -26,6 +26,9 @@ re = _LazyRegexModule()
 # https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py
 GPT2_SPLIT_PATTERN = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 GPT4_SPLIT_PATTERN = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
+# GPT4_SPLIT_PATTERN for the standard library re module, valid when letters are
+# [^\W\d_], numbers are \d and whitespace is \s in both modules
+_GPT4_SPLIT_PATTERN_STD = r"""'(?i:[sdmt]|ll|ve|re)|(?:[^\r\n\w]|_)?[^\W\d_]+|\d{1,3}| ?(?:[^\s\w]|_)+[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
 
 
 class RegexTokenizer(Tokenizer):
@@ -447,10 +450,26 @@ class RegexTokenizer(Tokenizer):
             ids = newids
         return ids
 
+    def _split_text(self, text):
+        # split text into chunks of text by categories defined in regex pattern
+        compiled = self.compiled_pattern
+        if (self._compiled_source == GPT4_SPLIT_PATTERN and compiled.pattern == GPT4_SPLIT_PATTERN
+                and compiled.flags == re.compile(GPT4_SPLIT_PATTERN).flags):
+            # the standard library re module runs an equivalent pattern faster, as
+            # long as it classifies every character of text exactly like the regex
+            # module does (letter / number / whitespace / other), and no character
+            # case-folds onto the ASCII letters of the contractions
+            chars = "".join(set(text))
+            if "\u017f" not in chars and "\u212a" not in chars:
+                import re as std_re
+                if (std_re.findall(r"([^\W\d_])|(\d)|(\s)|.", chars, std_re.S)
+                        == re.findall(r"(\p{L})|(\p{N})|(\s)|.", chars, re.S)):
+                    return std_re.findall(_GPT4_SPLIT_PATTERN_STD, text)
+        return re.findall(compiled, text)
+
     def encode_ordinary(self, text):
         """Encoding that ignores any special tokens."""
-        # split text into chunks of text by categories defined in regex pattern
-        text_chunks = re.findall(self.compiled_pattern, text)
+        text_chunks = self._split_text(text)
         if type(self)._encode_chunk is RegexTokenizer._encode_chunk:
             # when every merge creates a token id larger than both of its children
             # (and ids are distinct), the merges can be applied in index order with
