@@ -34,7 +34,7 @@ GPT2_SPLIT_PATTERN = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}
 GPT4_SPLIT_PATTERN = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
 # GPT4_SPLIT_PATTERN for the standard library re module, valid when letters are
 # [^\W\d_], numbers are \d and whitespace is \s in both modules
-_GPT4_SPLIT_PATTERN_STD = r"""'(?i:[sdmt]|ll|ve|re)|(?:[^\r\n\w]|_)?[^\W\d_]+|\d{1,3}| ?(?:[^\s\w]|_)+[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
+_GPT4_SPLIT_PATTERN_STD = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\w]?[^\W\d_]+|_[^\W\d_]+|\d{1,3}| ?(?:[^\s\w]|_)+[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
 
 
 class RegexTokenizer(Tokenizer):
