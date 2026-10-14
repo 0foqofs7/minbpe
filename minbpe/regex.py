@@ -452,9 +452,10 @@ class RegexTokenizer(Tokenizer):
 
     def _split_text(self, text):
         # split text into chunks of text by categories defined in regex pattern
-        compiled = self.compiled_pattern
-        if (self._compiled_source == GPT4_SPLIT_PATTERN and compiled.pattern == GPT4_SPLIT_PATTERN
-                and compiled.flags == re.compile(GPT4_SPLIT_PATTERN).flags):
+        compiled = self._compiled_pattern
+        if self._compiled_source == GPT4_SPLIT_PATTERN and (compiled is None or (
+                compiled.pattern == GPT4_SPLIT_PATTERN
+                and compiled.flags == re.compile(GPT4_SPLIT_PATTERN).flags)):
             # the standard library re module runs an equivalent pattern faster, as
             # long as it classifies every character of text exactly like the regex
             # module does (letter / number / whitespace / other), and no character
@@ -462,10 +463,18 @@ class RegexTokenizer(Tokenizer):
             chars = "".join(set(text))
             if "\u017f" not in chars and "\u212a" not in chars:
                 import re as std_re
-                if (std_re.findall(r"([^\W\d_])|(\d)|(\s)|.", chars, std_re.S)
-                        == re.findall(r"(\p{L})|(\p{N})|(\s)|.", chars, re.S)):
+                from unicodedata import category
+                # characters whose class is plain from their category need no
+                # check by the regex module (which is then not imported at all)
+                rest = "".join([c for c in chars if not (
+                    c not in "\x1c\x1d\x1e\x1f" if c.isascii()
+                    else category(c) in ("Zs", "Zl", "Zp") if c.isspace()
+                    else c.isalpha() or c.isdecimal() if c.isalnum()
+                    else category(c)[0] in "PSM")])
+                if not rest or (std_re.findall(r"([^\W\d_])|(\d)|(\s)|.", rest, std_re.S)
+                        == re.findall(r"(\p{L})|(\p{N})|(\s)|.", rest, re.S)):
                     return std_re.findall(_GPT4_SPLIT_PATTERN_STD, text)
-        return re.findall(compiled, text)
+        return re.findall(self.compiled_pattern, text)
 
     def encode_ordinary(self, text):
         """Encoding that ignores any special tokens."""
@@ -543,8 +552,12 @@ class RegexTokenizer(Tokenizer):
         # based on the occurrence of any exact match with any of the special tokens
         # we can use re.split for this. note that surrounding the pattern with ()
         # makes it into a capturing group, so the special tokens will be included
-        special_pattern = "(" + "|".join(re.escape(k) for k in special) + ")"
-        special_chunks = re.split(special_pattern, text)
+        # (for non-empty literal tokens the standard library re module splits identically)
+        split_re = re
+        if all(special):
+            import re as split_re
+        special_pattern = "(" + "|".join(split_re.escape(k) for k in special) + ")"
+        special_chunks = split_re.split(special_pattern, text)
         # now all the special characters are separated from the rest of the text
         # all chunks of text are encoded separately, then results are joined
         ids = []
