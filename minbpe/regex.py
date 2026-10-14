@@ -11,6 +11,13 @@ Unlike BasicTokenizer:
 
 from .base import Tokenizer, get_stats, build_merge_map, ordered_merge_steps, BYTE_VOCAB
 
+try:
+    # the C heap functions behind heapq; importing them directly avoids
+    # loading the pure-Python heapq module in train()
+    from _heapq import heapify, heappop, heappush, heapreplace
+except ImportError:
+    from heapq import heapify, heappop, heappush, heapreplace
+
 
 class _LazyRegexModule:
     # imports the regex module on first use (save/load never need it)
@@ -20,7 +27,6 @@ class _LazyRegexModule:
         return getattr(regex, name)
 
 re = _LazyRegexModule()
-
 
 # the main GPT text split patterns, see
 # https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py
@@ -64,7 +70,7 @@ class RegexTokenizer(Tokenizer):
         num_merges = vocab_size - 256
 
         # split the text up into text chunks
-        text_chunks = re.findall(self.compiled_pattern, text)
+        text_chunks = self._split_text(text)
 
         # input text preprocessing: identical chunks are processed once,
         # weighted by their number of occurrences (first-seen order is kept)
@@ -94,16 +100,12 @@ class RegexTokenizer(Tokenizer):
             for cpair in map(str.__add__, chunk_ids, chunk_ids[1:]):
                 stats[cpair] = sget(cpair, 0) + w
                 where[cpair].append(j)
-        import heapq
         # lazy max-heap of (-count, pair); an entry is current only while
         # stats[pair] still equals its count, stale entries are skipped
         heap = [(-c, p) for p, c in stats.items()]
-        heapq.heapify(heap)
+        heapify(heap)
         # pair -> count of its latest heap entry
         pushed = dict(stats)
-        heappush = heapq.heappush
-        heappop = heapq.heappop
-        heapreplace = heapq.heapreplace
         # tied pairs not chosen by the previous merge, kept off the heap
         # (each was current with count pend_top when it was set aside)
         pending = []
