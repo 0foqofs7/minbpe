@@ -12,7 +12,7 @@ Unlike BasicTokenizer:
 from collections import Counter
 from heapq import heapify, heappop, heappush, heapreplace
 from operator import add
-import regex as re
+from unicodedata import category
 from .base import Tokenizer
 
 
@@ -20,6 +20,24 @@ from .base import Tokenizer
 # https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py
 GPT2_SPLIT_PATTERN = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 GPT4_SPLIT_PATTERN = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
+# the GPT-4 pattern for the standard library re module; it splits the same way
+# on text whose characters all have one of the categories below (letters are
+# then [^\W\d_], numbers \d, and \s agrees with the regex module), plus ASCII
+# other than \x1c-\x1f (the possessive quantifiers never need to backtrack)
+_GPT4_SPLIT_PATTERN_STD = r"""'(?i:[sdmt]|ll|ve|re)|(?:[^\r\n\w]|_)?[^\W\d_]+|\d{1,3}| ?(?:[^\s\w]|_)+[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
+_STD_SAFE_CATEGORIES = frozenset(("Lu", "Ll", "Lt", "Lm", "Lo", "Nd",
+                                  "Pc", "Pd", "Ps", "Pe", "Pi", "Pf", "Po",
+                                  "Sm", "Sc", "Sk", "So"))
+
+
+def _std_splits_alike(text):
+    for c in set(text):
+        if c < "\x80":
+            if "\x1c" <= c <= "\x1f":
+                return False
+        elif c == "\u017f" or category(c) not in _STD_SAFE_CATEGORIES:
+            return False
+    return True
 
 
 class RegexTokenizer(Tokenizer):
@@ -32,9 +50,32 @@ class RegexTokenizer(Tokenizer):
         """
         super().__init__()
         self.pattern = GPT4_SPLIT_PATTERN if pattern is None else pattern
-        self.compiled_pattern = re.compile(self.pattern)
+        # the default pattern is compiled (with the regex module) on first use
+        self._split_pattern = self.pattern
+        self._compiled_pattern = None
+        if self.pattern != GPT4_SPLIT_PATTERN:
+            self.compiled_pattern
         self.special_tokens = {}
         self.inverse_special_tokens = {}
+
+    @property
+    def compiled_pattern(self):
+        if self._compiled_pattern is None:
+            import regex as re
+            self._compiled_pattern = re.compile(self._split_pattern)
+        return self._compiled_pattern
+
+    @compiled_pattern.setter
+    def compiled_pattern(self, value):
+        self._compiled_pattern = value
+
+    def _split_chunks(self, text):
+        if (self._compiled_pattern is None and
+                self._split_pattern == GPT4_SPLIT_PATTERN and
+                _std_splits_alike(text)):
+            import re
+            return re.findall(_GPT4_SPLIT_PATTERN_STD, text)
+        return self.compiled_pattern.findall(text)
 
     def train(self, text, vocab_size, verbose=False):
         assert vocab_size >= 256
@@ -42,7 +83,7 @@ class RegexTokenizer(Tokenizer):
 
         # split the text up into text chunks and encode them
         # identical chunks are kept once (in first-seen order) with a count
-        chunk_counts = Counter(self.compiled_pattern.findall(text))
+        chunk_counts = Counter(self._split_chunks(text))
         ids = []
         counts = []
         for chunk, count in chunk_counts.items():
@@ -382,6 +423,7 @@ class RegexTokenizer(Tokenizer):
         # based on the occurrence of any exact match with any of the special tokens
         # we can use re.split for this. note that surrounding the pattern with ()
         # makes it into a capturing group, so the special tokens will be included
+        import regex as re
         special_pattern = "(" + "|".join(re.escape(k) for k in special) + ")"
         special_chunks = re.split(special_pattern, text)
         # now all the special characters are separated from the rest of the text
